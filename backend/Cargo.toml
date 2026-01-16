@@ -1,0 +1,39 @@
+[workspace]
+members = [".", "migration"]
+
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+migration = { path = "migration" }
+tokio = { version = "1.42.0", features = ["full"] }
+sea-orm = { version = "1.1.4", features = [ "sqlx-postgres", "runtime-tokio-rustls", "macros" ] }
+dotenvy = "0.15"
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1.0"
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+# Authentication & Security
+jsonwebtoken = "9.3"
+bcrypt = "0.15"
+validator = { version = "0.18", features = ["derive"] }
+# Email (for verification)
+lettre = "0.11"
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rand = "0.8"
+
+[package.metadata.scripts]
+server = "cargo run --bin my_app"
+migrate = "sea-orm-cli migrate up"
+test-db = "docker-compose up -d && cargo test"

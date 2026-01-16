@@ -1,0 +1,29 @@
+pub use sea_orm_migration::prelude::*;
+
+// Import all migration modules
+mod m20260116_000001_create_users;
+mod m20260116_000002_create_meetings;
+mod m20260116_000003_create_participants;
+mod m20260116_000004_create_audio_video_devices;
+mod m20260116_000005_create_chat_messages;
+mod m20260116_000006_create_session_logs;
+mod m20260116_000007_create_webhooks;
+mod m20260116_000008_create_api_keys;
+
+pub struct Migrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![
+            Box::new(m20260116_000001_create_users::Migration),
+            Box::new(m20260116_000002_create_meetings::Migration),
+            Box::new(m20260116_000003_create_participants::Migration),
+            Box::new(m20260116_000004_create_audio_video_devices::Migration),
+            Box::new(m20260116_000005_create_chat_messages::Migration),
+            Box::new(m20260116_000006_create_session_logs::Migration),
+            Box::new(m20260116_000007_create_webhooks::Migration),
+            Box::new(m20260116_000008_create_api_keys::Migration),
+        ]
+    }
+}
