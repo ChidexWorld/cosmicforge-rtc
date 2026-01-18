@@ -18,20 +18,22 @@ This document provides comprehensive documentation for the CosmicForge RTC datab
 
 Stores user account information with support for both local and OAuth authentication.
 
-| Field              | Type                                             | Constraints                              | Description                        |
-| ------------------ | ------------------------------------------------ | ---------------------------------------- | ---------------------------------- |
-| id                 | UUID                                             | PRIMARY KEY, DEFAULT gen_random_uuid()   | Unique user identifier             |
-| username           | VARCHAR(50)                                      | UNIQUE, NOT NULL                         | Display name                       |
-| email              | VARCHAR(100)                                     | UNIQUE, NOT NULL                         | Email address                      |
-| password_hash      | VARCHAR(255)                                     | NULL                                     | Bcrypt hash (NULL for OAuth users) |
-| auth_type          | ENUM('local','google')                           | NOT NULL, DEFAULT 'local'                | Authentication method              |
-| role               | ENUM('user','admin')                             | NOT NULL, DEFAULT 'user'                 | User role                          |
-| status             | ENUM('pending_verification','active','inactive') | NOT NULL, DEFAULT 'pending_verification' | Account status                     |
-| verification_token | VARCHAR(128)                                     | NULL                                     | Email verification token           |
-| token_expires_at   | TIMESTAMP                                        | NULL                                     | Verification token expiry          |
-| created_at         | TIMESTAMP                                        | NOT NULL, DEFAULT CURRENT_TIMESTAMP      | Account creation time              |
-| updated_at         | TIMESTAMP                                        | NOT NULL, DEFAULT CURRENT_TIMESTAMP      | Last update time                   |
-| last_login         | TIMESTAMP                                        | NULL                                     | Last login timestamp               |
+| Field                  | Type                                             | Constraints                              | Description                        |
+| ---------------------- | ------------------------------------------------ | ---------------------------------------- | ---------------------------------- |
+| id                     | UUID                                             | PRIMARY KEY, DEFAULT gen_random_uuid()   | Unique user identifier             |
+| username               | VARCHAR(50)                                      | UNIQUE, NOT NULL                         | Display name                       |
+| email                  | VARCHAR(100)                                     | UNIQUE, NOT NULL                         | Email address                      |
+| password_hash          | VARCHAR(255)                                     | NULL                                     | Bcrypt hash (NULL for OAuth users) |
+| auth_type              | ENUM('local','google')                           | NOT NULL, DEFAULT 'local'                | Authentication method              |
+| role                   | ENUM('user','admin')                             | NOT NULL, DEFAULT 'user'                 | User role                          |
+| status                 | ENUM('pending_verification','active','inactive') | NOT NULL, DEFAULT 'pending_verification' | Account status                     |
+| verification_token     | VARCHAR(6)                                       | NULL                                     | 6-digit email verification code    |
+| token_expires_at       | TIMESTAMP                                        | NULL                                     | Verification token expiry          |
+| reset_token            | VARCHAR(6)                                       | NULL                                     | 6-digit password reset code        |
+| reset_token_expires_at | TIMESTAMP                                        | NULL                                     | Reset token expiry (1 hour)        |
+| created_at             | TIMESTAMP                                        | NOT NULL, DEFAULT CURRENT_TIMESTAMP      | Account creation time              |
+| updated_at             | TIMESTAMP                                        | NOT NULL, DEFAULT CURRENT_TIMESTAMP      | Last update time                   |
+| last_login             | TIMESTAMP                                        | NULL                                     | Last login timestamp               |
 
 **Indexes:**
 
@@ -438,9 +440,58 @@ cargo run -- fresh
 
 ---
 
+---
+
+### 9. Email Jobs
+
+Stores queued email jobs for async processing with retry support.
+
+| Field           | Type                                                     | Constraints                            | Description                              |
+| --------------- | -------------------------------------------------------- | -------------------------------------- | ---------------------------------------- |
+| id              | UUID                                                     | PRIMARY KEY, DEFAULT gen_random_uuid() | Unique job identifier                    |
+| idempotency_key | VARCHAR(255)                                             | UNIQUE, NOT NULL                       | Key to prevent duplicate sends           |
+| to_email        | VARCHAR(255)                                             | NOT NULL                               | Recipient email address                  |
+| to_name         | VARCHAR(255)                                             | NULL                                   | Recipient display name                   |
+| subject         | VARCHAR(500)                                             | NOT NULL                               | Email subject line                       |
+| html_body       | TEXT                                                     | NOT NULL                               | HTML version of email body               |
+| text_body       | TEXT                                                     | NOT NULL                               | Plain text version of email body         |
+| status          | ENUM('pending','processing','sent','failed','dead_letter') | NOT NULL, DEFAULT 'pending'            | Job processing status                    |
+| retry_count     | INTEGER                                                  | NOT NULL, DEFAULT 0                    | Number of send attempts                  |
+| max_retries     | INTEGER                                                  | NOT NULL, DEFAULT 3                    | Maximum retry attempts                   |
+| next_retry_at   | TIMESTAMP                                                | NULL                                   | When to attempt next retry               |
+| last_error      | TEXT                                                     | NULL                                   | Last error message if failed             |
+| created_at      | TIMESTAMP                                                | NOT NULL, DEFAULT CURRENT_TIMESTAMP    | Job creation time                        |
+| updated_at      | TIMESTAMP                                                | NOT NULL, DEFAULT CURRENT_TIMESTAMP    | Last update time                         |
+| sent_at         | TIMESTAMP                                                | NULL                                   | When email was successfully sent         |
+
+**Indexes:**
+
+- `idx_email_jobs_status_next_retry` on `(status, next_retry_at)`
+- `idx_email_jobs_idempotency_key` on `idempotency_key`
+
+**Status Values:**
+
+- `pending` - Waiting to be processed
+- `processing` - Currently being processed by a worker
+- `sent` - Successfully sent
+- `failed` - Failed but may retry
+- `dead_letter` - Failed permanently after max retries
+
+**See Also**: [EMAIL_QUEUE.md](./EMAIL_QUEUE.md) for full email system documentation.
+
+---
+
 ## Schema Version
 
-**Version**: 1.0.0  
-**Last Updated**: 2026-01-16  
-**Total Tables**: 8  
+**Version**: 1.2.0
+**Last Updated**: 2026-01-18
+**Total Tables**: 9
 **Architecture**: User-Centric (No Multi-Tenancy)
+
+### Changelog
+
+| Version | Date       | Changes                                                    |
+|---------|------------|------------------------------------------------------------|
+| 1.2.0   | 2026-01-18 | Added `reset_token` and `reset_token_expires_at` to Users  |
+| 1.1.0   | 2026-01-17 | Added Email Jobs table for async email processing          |
+| 1.0.0   | 2026-01-17 | Initial schema with Users, Meetings, Participants, etc.    |

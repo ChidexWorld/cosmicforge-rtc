@@ -1,6 +1,6 @@
 # CosmicForge RTC - Quick Start Guide
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -10,17 +10,29 @@
 
 ### Initial Setup
 
-1. **Clone and navigate to backend**:
+1. **Navigate to backend**:
 
    ```bash
    cd backend
    ```
 
 2. **Configure environment variables**:
-   Create/edit `.env` file with your database credentials:
+   Create/edit `.env` file:
 
    ```env
    DATABASE_URL=postgres://username:password@host:port/database?sslmode=require
+   JWT_SECRET=your-secret-key-change-this-in-production
+   HOST=127.0.0.1
+   PORT=8080
+
+   # Optional: Email configuration
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USERNAME=your-email@gmail.com
+   SMTP_PASSWORD=your-app-password
+   SMTP_FROM_EMAIL=noreply@cosmicforge.com
+   SMTP_FROM_NAME=CosmicForge
+   APP_URL=http://localhost:3000
    ```
 
 3. **Build the project**:
@@ -42,12 +54,16 @@
    cargo run
    ```
 
-## 📊 Database Migrations
+6. **Access the API**:
+   - API: http://localhost:8080/api/v1
+   - Swagger UI: http://localhost:8080/swagger-ui
+   - OpenAPI Spec: http://localhost:8080/api-docs/openapi.json
+
+## Database Migrations
 
 ### Running Migrations
 
 ```bash
-# Navigate to migration directory
 cd migration
 
 # Apply all pending migrations
@@ -59,35 +75,44 @@ cargo run -- down
 # Check migration status
 cargo run -- status
 
-# Refresh database (rollback all + reapply)
-cargo run -- refresh
-
 # Reset database (drop all + reapply)
 cargo run -- fresh
 ```
 
 ### Migration Order
 
-The migrations run in this order:
+1. Users
+2. Meetings
+3. Participants
+4. Audio/Video Devices
+5. Chat Messages
+6. Session Logs
+7. Webhooks
+8. API Keys
+9. Email Jobs
 
-1. ✅ Tenants
-2. ✅ Users
-3. ✅ Meetings
-4. ✅ Participants
-5. ✅ Audio/Video Devices
-6. ✅ Chat Messages
-7. ✅ Session Logs
-8. ✅ Webhooks
-9. ✅ API Keys
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 backend/
 ├── src/
-│   ├── models/          # SeaORM entity models
+│   ├── config/           # Configuration (app, email)
 │   │   ├── mod.rs
-│   │   ├── tenants.rs
+│   │   ├── app.rs        # AppConfig (db, jwt, host, port)
+│   │   └── email.rs      # EmailConfig (SMTP settings)
+│   ├── dto/              # Request/Response DTOs
+│   │   ├── mod.rs
+│   │   ├── auth.rs       # Auth DTOs
+│   │   └── common.rs     # Common DTOs
+│   ├── handlers/         # Request handlers
+│   │   ├── mod.rs
+│   │   ├── auth.rs       # Auth handlers
+│   │   └── meetings.rs   # Meeting handlers
+│   ├── middleware/       # Middleware
+│   │   ├── mod.rs
+│   │   └── auth.rs       # JWT auth middleware
+│   ├── models/           # SeaORM entities
+│   │   ├── mod.rs
 │   │   ├── users.rs
 │   │   ├── meetings.rs
 │   │   ├── participants.rs
@@ -95,112 +120,78 @@ backend/
 │   │   ├── chat_messages.rs
 │   │   ├── session_logs.rs
 │   │   ├── webhooks.rs
-│   │   └── api_keys.rs
-│   ├── handlers/        # Request handlers
-│   ├── routes/          # API routes
-│   ├── services/        # Business logic
-│   ├── lib.rs           # Library root
-│   └── main.rs          # Application entry point
+│   │   ├── api_keys.rs
+│   │   └── email_jobs.rs
+│   ├── queues/           # Job queues
+│   │   ├── mod.rs
+│   │   └── email.rs      # Email queue
+│   ├── routes/           # API routes
+│   │   ├── mod.rs
+│   │   ├── auth.rs
+│   │   └── meetings.rs
+│   ├── services/         # Business logic
+│   │   ├── mod.rs
+│   │   ├── auth.rs       # Auth service
+│   │   └── email.rs      # Email service
+│   ├── swagger/          # OpenAPI/Swagger
+│   │   └── mod.rs
+│   ├── templates/        # Email templates
+│   │   ├── mod.rs
+│   │   └── email/
+│   │       ├── mod.rs
+│   │       ├── base.rs
+│   │       ├── verification.rs
+│   │       ├── password_reset.rs
+│   │       ├── welcome.rs
+│   │       └── notification.rs
+│   ├── workers/          # Background workers
+│   │   ├── mod.rs
+│   │   └── email.rs      # Email worker
+│   ├── error.rs          # Error types
+│   ├── state.rs          # App state
+│   ├── lib.rs            # Module exports
+│   └── main.rs           # Entry point
 ├── migration/
 │   └── src/
-│       ├── lib.rs       # Migration registry
-│       ├── main.rs      # Migration CLI
-│       └── m2026*.rs    # Individual migrations
+│       ├── lib.rs        # Migration registry
+│       ├── main.rs       # Migration CLI
+│       └── m2026*.rs     # Individual migrations
+├── docs/                 # Documentation
 ├── Cargo.toml
-├── .env
-├── DATABASE_SCHEMA.md   # Full schema documentation
-└── QUICK_START.md       # This file
+└── .env
 ```
 
-## 🗄️ Database Schema Overview
+## Database Tables Overview
 
-### Core Tables
+| Table                   | Purpose                    | Key Features                     |
+| ----------------------- | -------------------------- | -------------------------------- |
+| **users**               | User accounts              | Local + OAuth auth, verification |
+| **meetings**            | Video conferences          | Lifecycle status, metadata       |
+| **participants**        | Meeting attendees          | Guest support, real-time states  |
+| **audio_video_devices** | Media devices              | Device tracking per participant  |
+| **chat_messages**       | In-meeting chat            | Text communication               |
+| **session_logs**        | Event logging              | Comprehensive audit trail        |
+| **webhooks**            | Event notifications        | User-specific, signed payloads   |
+| **api_keys**            | API access                 | Usage tracking, expiration       |
+| **email_jobs**          | Email queue                | Retry, dead-letter, idempotency  |
 
-| Table                   | Purpose                    | Key Features                           |
-| ----------------------- | -------------------------- | -------------------------------------- |
-| **tenants**             | Multi-tenant organizations | UUID PK, domain support                |
-| **users**               | User accounts & admins     | Local + OAuth auth, email verification |
-| **meetings**            | Video conferences          | Lifecycle status, metadata, privacy    |
-| **participants**        | Meeting attendees          | Guest support, real-time states        |
-| **audio_video_devices** | Media devices              | Device tracking per participant        |
-| **chat_messages**       | In-meeting chat            | Text communication                     |
-| **session_logs**        | Event logging              | Comprehensive audit trail              |
-| **webhooks**            | Event notifications        | Tenant-specific, signed payloads       |
-| **api_keys**            | API access                 | Usage tracking, expiration             |
-
-### Key Relationships
-
-```
-Tenants → Users → Meetings → Participants → Devices/Chat/Logs
-   ↓         ↓
-Webhooks  API Keys
-```
-
-## 🔑 Key Concepts
-
-### 1. Multi-Tenancy
-
-- All data is scoped to tenants via `tenant_id`
-- Always filter queries by tenant for data isolation
-- Tenants can have custom domains
-
-### 2. Authentication Types
-
-- **Local**: Email/password with verification workflow
-- **Google OAuth**: Passwordless authentication
-
-### 3. User Roles
-
-- **User**: Regular user (default)
-- **Admin**: Administrative privileges
-
-### 4. Meeting Lifecycle
-
-1. **Scheduled** → Meeting created
-2. **Ongoing** → Meeting in progress
-3. **Ended** → Meeting completed
-4. **Cancelled** → Meeting cancelled
-
-### 5. Guest Participants
-
-- `participants.user_id` can be NULL
-- Allows anonymous users to join meetings
-- Only requires `display_name`
-
-## 💻 Common Code Examples
-
-### Create a Tenant
-
-```rust
-use sea_orm::*;
-use uuid::Uuid;
-use crate::models::tenants::{self, Entity as Tenants};
-
-let tenant = tenants::ActiveModel {
-    id: Set(Uuid::new_v4()),
-    name: Set("Acme Corp".to_owned()),
-    domain: Set(Some("acme.example.com".to_owned())),
-    status: Set(tenants::TenantStatus::Active),
-    ..Default::default()
-};
-
-let result = tenant.insert(db).await?;
-```
+## Code Examples
 
 ### Create a User (Local Auth)
 
 ```rust
-use crate::models::users::{self, Entity as Users};
+use crate::models::users::{self, AuthType, UserRole, UserStatus};
+use sea_orm::*;
+use uuid::Uuid;
 
 let user = users::ActiveModel {
     id: Set(Uuid::new_v4()),
-    tenant_id: Set(tenant_id),
     username: Set("john_doe".to_owned()),
     email: Set("john@example.com".to_owned()),
-    password_hash: Set(Some(hash_password("secret123"))),
-    auth_type: Set(users::AuthType::Local),
-    role: Set(users::UserRole::User),
-    status: Set(users::UserStatus::PendingVerification),
+    password_hash: Set(Some(hashed_password)),
+    auth_type: Set(AuthType::Local),
+    role: Set(UserRole::User),
+    status: Set(UserStatus::PendingVerification),
     ..Default::default()
 };
 
@@ -210,17 +201,16 @@ let result = user.insert(db).await?;
 ### Create a Meeting
 
 ```rust
-use crate::models::meetings::{self, Entity as Meetings};
+use crate::models::meetings::{self, MeetingStatus};
 
 let meeting = meetings::ActiveModel {
     id: Set(Uuid::new_v4()),
     meeting_identifier: Set("MTG-12345".to_owned()),
-    tenant_id: Set(tenant_id),
     host_id: Set(user_id),
     title: Set("Team Standup".to_owned()),
     is_private: Set(false),
-    start_time: Set(chrono::Utc::now()),
-    status: Set(meetings::MeetingStatus::Scheduled),
+    start_time: Set(chrono::Utc::now().naive_utc()),
+    status: Set(MeetingStatus::Scheduled),
     ..Default::default()
 };
 
@@ -230,97 +220,56 @@ let result = meeting.insert(db).await?;
 ### Add a Guest Participant
 
 ```rust
-use crate::models::participants::{self, Entity as Participants};
+use crate::models::participants::{self, ParticipantRole, ParticipantStatus};
 
 let participant = participants::ActiveModel {
     id: Set(Uuid::new_v4()),
     meeting_id: Set(meeting_id),
     user_id: Set(None), // NULL for guests
-    role: Set(participants::ParticipantRole::Participant),
+    role: Set(ParticipantRole::Participant),
     display_name: Set("Guest User".to_owned()),
-    status: Set(participants::ParticipantStatus::Joined),
+    status: Set(ParticipantStatus::Joined),
     ..Default::default()
 };
 
 let result = participant.insert(db).await?;
 ```
 
-### Query with Filters
+### Send an Email (via Queue)
 
 ```rust
-use sea_orm::*;
-use crate::models::{meetings, participants};
-
-// Get all ongoing meetings for a tenant
-let ongoing_meetings = meetings::Entity::find()
-    .filter(meetings::Column::TenantId.eq(tenant_id))
-    .filter(meetings::Column::Status.eq(meetings::MeetingStatus::Ongoing))
-    .all(db)
-    .await?;
-
-// Get all participants in a meeting
-let participants = participants::Entity::find()
-    .filter(participants::Column::MeetingId.eq(meeting_id))
-    .filter(participants::Column::Status.eq(participants::ParticipantStatus::Joined))
-    .all(db)
+// Emails are queued, not sent immediately
+let job_id = state.email_service
+    .send_verification_email(&email, &username, &token)
     .await?;
 ```
 
-## 🔒 Security Best Practices
+## API Endpoints
 
-### 1. Password Hashing
+### Authentication (`/api/v1/auth`)
 
-```rust
-use bcrypt::{hash, verify, DEFAULT_COST};
+| Method | Endpoint        | Auth | Description              |
+| ------ | --------------- | ---- | ------------------------ |
+| POST   | `/register`     | No   | Register new user        |
+| POST   | `/verify-email` | No   | Verify email with token  |
+| POST   | `/login`        | No   | Login and get JWT tokens |
+| POST   | `/refresh`      | No   | Refresh access token     |
+| POST   | `/logout`       | Yes  | Logout user              |
 
-// Hash password
-let hashed = hash("user_password", DEFAULT_COST)?;
+### Meetings (`/api/v1/meetings`)
 
-// Verify password
-let valid = verify("user_password", &hashed)?;
-```
+| Method | Endpoint     | Auth | Description                  |
+| ------ | ------------ | ---- | ---------------------------- |
+| GET    | `/`          | Yes  | List meetings (paginated)    |
+| POST   | `/`          | Yes  | Create meeting               |
+| GET    | `/:id`       | Yes  | Get meeting details          |
+| PUT    | `/:id`       | Yes  | Update meeting (host only)   |
+| DELETE | `/:id`       | Yes  | Delete meeting (host only)   |
+| POST   | `/:id/start` | Yes  | Start meeting (host only)    |
+| POST   | `/:id/end`   | Yes  | End meeting (host only)      |
+| POST   | `/:id/join`  | No   | Join meeting (guest support) |
 
-### 2. Tenant Isolation
-
-```rust
-// ✅ Always filter by tenant_id
-let meetings = Meetings::find()
-    .filter(meetings::Column::TenantId.eq(current_tenant_id))
-    .all(db)
-    .await?;
-
-// ❌ Never query without tenant filter (security risk!)
-// let meetings = Meetings::find().all(db).await?;
-```
-
-### 3. API Key Validation
-
-```rust
-// Check if key is valid and not expired
-let api_key = ApiKeys::find()
-    .filter(api_keys::Column::ApiKey.eq(provided_key))
-    .filter(api_keys::Column::Status.eq(ApiKeyStatus::Active))
-    .filter(api_keys::Column::ExpiresAt.gt(chrono::Utc::now()))
-    .one(db)
-    .await?;
-
-if let Some(key) = api_key {
-    // Check usage limit
-    if key.used_count >= key.usage_limit {
-        return Err("Usage limit exceeded");
-    }
-    // Increment usage
-    // ... proceed with request
-}
-```
-
-## 📚 Documentation
-
-- **Full Schema Documentation**: See `DATABASE_SCHEMA.md`
-- **SeaORM Docs**: https://www.sea-ql.org/SeaORM/
-- **PostgreSQL UUID**: https://www.postgresql.org/docs/current/datatype-uuid.html
-
-## 🛠️ Development Commands
+## Development Commands
 
 ```bash
 # Build project
@@ -345,17 +294,15 @@ cargo check
 cargo build --release
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Migration Issues
 
 **Problem**: "relation already exists"
 
 ```bash
-# Check migration status
 cd migration
 cargo run -- status
-
 # If needed, reset (CAUTION: destroys data)
 cargo run -- fresh
 ```
@@ -373,20 +320,21 @@ cargo run -- fresh
 - Install Visual Studio Build Tools with "C++ build tools" workload
 - Restart terminal after installation
 
-**Problem**: "could not compile due to previous error"
+**Problem**: "could not compile"
 
-- Run `cargo clean` then `cargo build`
-- Check Rust version: `rustc --version` (should be 1.70+)
+```bash
+cargo clean
+cargo build
+```
 
-## 📞 Support
+### Email Issues
 
-For detailed information, refer to:
+**Problem**: Emails not sending
 
-1. `DATABASE_SCHEMA.md` - Complete schema documentation
-2. Migration files in `migration/src/`
-3. Model definitions in `src/models/`
+- Check SMTP configuration in `.env`
+- Check server logs for worker startup message
+- Query `email_jobs` table to see job status
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: 2026-01-16
+**Last Updated**: 2026-01-17

@@ -5,6 +5,7 @@ members = [".", "migration"]
 name = "backend"
 version = "0.1.0"
 edition = "2021"
+default-run = "backend"
 
 [dependencies]
 migration = { path = "migration" }
@@ -24,14 +25,22 @@ utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
 jsonwebtoken = "9.3"
 bcrypt = "0.15"
 validator = { version = "0.18", features = ["derive"] }
+regex = "1.10"
 # Email (for verification)
-lettre = "0.11"
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls", "smtp-transport", "builder"] }
 # Utilities
 anyhow = "1.0"
 thiserror = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 rand = "0.8"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+tokio-stream = "0.1.18"
+futures-util = "0.3.31"
+
+[[bin]]
+name = "test_email"
+path = "src/bin/test_email.rs"
 
 [package.metadata.scripts]
 server = "cargo run --bin my_app"

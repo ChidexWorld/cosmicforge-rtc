@@ -1,567 +1,349 @@
-# 📚 Swagger Documentation System Guide
+# Swagger Documentation Guide
 
-This guide explains how the CosmicForge RTC API documentation system works, how to maintain it, and how to extend it.
+This guide explains how the CosmicForge RTC API documentation system works and how to extend it.
 
----
+## Overview
 
-## 🎯 Overview
+The API uses **utoipa** for OpenAPI documentation with compile-time validation:
 
-The CosmicForge RTC API uses a **modular YAML-based documentation system** that automatically generates OpenAPI 3.0 specification. This approach provides:
+- Documentation is defined via Rust macros alongside handler code
+- Swagger UI is served at `/swagger-ui`
+- OpenAPI spec available at `/api-docs/openapi.json`
 
-- ✅ **Easy Maintenance** - Small, focused files instead of one giant file
-- ✅ **Better Organization** - Paths and schemas separated by feature
-- ✅ **Version Control Friendly** - Easier to track changes and resolve conflicts
-- ✅ **Auto-Generated** - Documentation builds automatically from YAML files
-- ✅ **Type-Safe** - Validated against OpenAPI 3.0 specification
-- ✅ **Rust Integration** - Uses `utoipa` for compile-time validation
+## How It Works
 
----
+### 1. Handler Documentation
 
-## 📁 Documentation Structure
-
-```
-backend/
-├── src/
-│   └── swagger/                    # Swagger/OpenAPI documentation
-│       ├── openapi.base.json       # Base OpenAPI template
-│       ├── openapi.json            # Generated merged spec (auto-created)
-│       ├── mod.rs                  # Rust module loader
-│       ├── paths/                  # API endpoint documentation
-│       │   ├── auth.paths.yaml     # Authentication endpoints
-│       │   └── meetings.paths.yaml # Meeting endpoints
-│       ├── components/             # Reusable schema definitions
-│       │   ├── common.schemas.yaml # Common/shared schemas
-│       │   ├── auth.schemas.yaml   # Auth-related schemas
-│       │   └── meetings.schemas.yaml # Meeting schemas
-│       └── examples/               # Request/response examples
-│
-└── docs/                           # Markdown documentation (separate)
-    ├── README.md                   # Docs navigation
-    ├── DATABASE_SCHEMA.md          # Database documentation
-    ├── QUICK_START.md              # Quick start guide
-    └── README_MIGRATIONS.md        # Migration guide
-```
-
-**Important**:
-
-- `src/swagger/` = API/Swagger documentation (YAML/JSON)
-- `docs/` = Markdown documentation files (.md)
-
----
-
-## 🔄 How It Works
-
-### 1. **Source Files (YAML)**
-
-You write documentation in small, focused YAML files organized by feature:
-
-```yaml
-# src/swagger/paths/auth.paths.yaml
-/api/auth/login:
-  post:
-    tags:
-      - Authentication
-    summary: Login user
-    description: Authenticate user and receive JWT token
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/LoginRequest"
-    responses:
-      "200":
-        description: Login successful
-```
-
-### 2. **Build Process**
-
-When you run the build script:
-
-1. **Reads** `openapi.base.json` (contains API info, servers, tags)
-2. **Merges** all `*.paths.yaml` files from `paths/` directory
-3. **Merges** all `*.schemas.yaml` files from `components/` directory
-4. **Validates** the merged specification for errors
-5. **Outputs** complete `openapi.json`
-
-### 3. **Runtime Loading**
-
-When the server starts:
-
-1. Rust code loads the generated `openapi.json`
-2. `utoipa-swagger-ui` serves it via Swagger UI
-3. Available at `/swagger-ui` endpoint
-
-### 4. **Swagger UI Display**
-
-Users can view and interact with the API documentation at:
-
-- `http://localhost:8080/swagger-ui`
-
----
-
-## 🛠️ Available Commands
-
-### Build Documentation (Node.js/Python Script)
-
-Create a build script to merge YAML files:
-
-```bash
-# Using Python (recommended for Rust projects)
-python scripts/build_swagger.py
-
-# Or using Node.js
-node scripts/build_swagger.js
-```
-
-### Validate Documentation
-
-```bash
-# Validate OpenAPI spec
-python scripts/validate_swagger.py
-```
-
----
-
-## ✏️ How to Update Documentation
-
-### Scenario 1: Add a New Endpoint
-
-1. **Open the appropriate path file** (or create a new one)
-
-   ```bash
-   # Edit existing file
-   vim src/swagger/paths/meetings.paths.yaml
-
-   # Or create new feature file
-   touch src/swagger/paths/chat.paths.yaml
-   ```
-
-2. **Add your endpoint definition**
-
-   ```yaml
-   /api/chat/messages:
-     get:
-       tags:
-         - Chat
-       summary: Get chat messages
-       security:
-         - bearerAuth: []
-       parameters:
-         - name: meeting_id
-           in: query
-           required: true
-           schema:
-             type: string
-             format: uuid
-       responses:
-         "200":
-           description: Messages retrieved successfully
-   ```
-
-3. **Build documentation**
-
-   ```bash
-   python scripts/build_swagger.py
-   ```
-
-4. **Restart server**
-
-   ```bash
-   cargo run
-   ```
-
-5. **View changes** at `http://localhost:8080/swagger-ui`
-
-### Scenario 2: Add a New Schema
-
-1. **Open the appropriate schema file**
-
-   ```bash
-   vim src/swagger/components/meetings.schemas.yaml
-   ```
-
-2. **Add your schema definition**
-
-   ```yaml
-   ChatMessage:
-     type: object
-     properties:
-       id:
-         type: string
-         format: uuid
-       message:
-         type: string
-       created_at:
-         type: string
-         format: date-time
-   ```
-
-3. **Reference it in your paths**
-
-   ```yaml
-   /api/chat/messages:
-     get:
-       responses:
-         "200":
-           content:
-             application/json:
-               schema:
-                 type: array
-                 items:
-                   $ref: "#/components/schemas/ChatMessage"
-   ```
-
-4. **Build and restart**
-   ```bash
-   python scripts/build_swagger.py
-   cargo run
-   ```
-
----
-
-## 📝 YAML File Structure
-
-### Path Files (`paths/*.paths.yaml`)
-
-```yaml
-# Path key (the actual API endpoint)
-/api/resource/{id}:
-  # HTTP method
-  get:
-    # Metadata
-    tags:
-      - ResourceName
-    summary: Short description
-    description: Longer explanation
-    operationId: getResource
-
-    # Security (if authentication required)
-    security:
-      - bearerAuth: []
-
-    # URL parameters
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-        description: Resource UUID
-
-    # Request body (for POST, PUT, PATCH)
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResourceRequest"
-
-    # Responses
-    responses:
-      "200":
-        description: Success response
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ResourceResponse"
-      "400":
-        $ref: "#/components/responses/ValidationError"
-      "401":
-        $ref: "#/components/responses/Unauthorized"
-```
-
-### Schema Files (`components/*.schemas.yaml`)
-
-```yaml
-# Schema name
-ResourceRequest:
-  type: object
-  required:
-    - name
-    - email
-  properties:
-    name:
-      type: string
-      description: Resource name
-      example: John Doe
-    email:
-      type: string
-      format: email
-      example: john@example.com
-    age:
-      type: integer
-      minimum: 0
-      maximum: 150
-      example: 30
-
-ResourceResponse:
-  type: object
-  properties:
-    success:
-      type: boolean
-      example: true
-    data:
-      $ref: "#/components/schemas/Resource"
-```
-
----
-
-## 🎨 Best Practices
-
-### 1. **Organize by Feature**
-
-Group related endpoints in the same file:
-
-- ✅ `auth.paths.yaml` - All authentication endpoints
-- ✅ `meetings.paths.yaml` - All meeting endpoints
-- ❌ Don't mix unrelated endpoints in one file
-
-### 2. **Use Schema References**
-
-Instead of repeating schemas, use `$ref`:
-
-```yaml
-# ✅ Good
-schema:
-  $ref: '#/components/schemas/User'
-
-# ❌ Bad - Repeating the schema inline
-schema:
-  type: object
-  properties:
-    id: ...
-    name: ...
-```
-
-### 3. **Add Descriptions Everywhere**
-
-- Add descriptions to endpoints
-- Add descriptions to parameters
-- Add descriptions to schema properties
-- Add examples wherever possible
-
-### 4. **Use Reusable Responses**
-
-Define common responses in `openapi.base.json`:
-
-```json
-{
-  "components": {
-    "responses": {
-      "Unauthorized": {
-        "description": "Unauthorized - Invalid or missing token"
-      }
-    }
-  }
-}
-```
-
-Then reference them:
-
-```yaml
-responses:
-  "401":
-    $ref: "#/components/responses/Unauthorized"
-```
-
-### 5. **Provide Request/Response Examples**
-
-```yaml
-requestBody:
-  content:
-    application/json:
-      schema:
-        $ref: "#/components/schemas/LoginRequest"
-      example:
-        email: john@example.com
-        password: password123
-```
-
----
-
-## 🚀 Integration with Rust
-
-### Using utoipa for Type-Safe Documentation
-
-The project uses `utoipa` for compile-time validated documentation:
+Each handler uses `#[utoipa::path]` macro to define its OpenAPI spec:
 
 ```rust
-use utoipa::{OpenApi, ToSchema};
-
-#[derive(ToSchema)]
-struct User {
-    id: Uuid,
-    username: String,
-    email: String,
-}
-
+// In handlers/auth.rs
 #[utoipa::path(
-    get,
-    path = "/api/users/{id}",
+    post,
+    path = "/api/v1/auth/register",
+    request_body = RegisterRequest,
     responses(
-        (status = 200, description = "User found", body = User),
-        (status = 404, description = "User not found")
-    )
+        (status = 201, description = "User registered", body = RegisterResponse),
+        (status = 400, description = "Validation error"),
+        (status = 409, description = "User already exists")
+    ),
+    tag = "Authentication"
 )]
-async fn get_user(id: Uuid) -> Result<Json<User>, StatusCode> {
+pub async fn register(
+    State(state): State<AppState>,
+    Json(payload): Json<RegisterRequest>,
+) -> impl IntoResponse {
     // Implementation
 }
 ```
 
-### Serving Swagger UI
+### 2. Schema Documentation
+
+DTOs use `#[derive(ToSchema)]` to generate schema definitions:
 
 ```rust
-use axum::Router;
-use utoipa_swagger_ui::SwaggerUi;
+// In dto/auth.rs
+use utoipa::ToSchema;
 
-let app = Router::new()
-    .merge(SwaggerUi::new("/swagger-ui")
-        .url("/api-docs/openapi.json", openapi_spec));
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct RegisterRequest {
+    /// Username for the new account
+    #[schema(example = "john_doe", min_length = 3, max_length = 50)]
+    pub username: String,
+
+    /// Email address
+    #[schema(example = "john@example.com")]
+    pub email: String,
+
+    /// Password (min 8 characters)
+    #[schema(example = "securePassword123", min_length = 8)]
+    pub password: String,
+}
 ```
+
+### 3. OpenAPI Configuration
+
+The main API doc struct is in `src/swagger/mod.rs`:
+
+```rust
+use utoipa::OpenApi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        crate::handlers::auth::register,
+        crate::handlers::auth::verify_email,
+        crate::handlers::auth::login,
+        crate::handlers::auth::refresh_token,
+        crate::handlers::auth::logout,
+    ),
+    components(
+        schemas(
+            crate::dto::RegisterRequest,
+            crate::dto::RegisterResponse,
+            crate::dto::LoginRequest,
+            crate::dto::LoginResponse,
+            // ... other schemas
+        )
+    ),
+    tags(
+        (name = "Authentication", description = "User authentication endpoints")
+    ),
+    info(
+        title = "CosmicForge RTC API",
+        version = "1.0.0",
+        description = "Real-Time Communication API"
+    )
+)]
+pub struct ApiDoc;
+```
+
+### 4. Swagger UI Router
+
+```rust
+pub fn swagger_router() -> Router {
+    SwaggerUi::new("/swagger-ui")
+        .url("/api-docs/openapi.json", ApiDoc::openapi())
+        .into()
+}
+```
+
+## Adding a New Endpoint
+
+### Step 1: Create the Handler
+
+```rust
+// In handlers/meetings.rs
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/meetings/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Meeting ID")
+    ),
+    responses(
+        (status = 200, description = "Meeting found", body = MeetingResponse),
+        (status = 404, description = "Meeting not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    tag = "Meetings"
+)]
+pub async fn get_meeting(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    // Implementation
+}
+```
+
+### Step 2: Create the DTOs
+
+```rust
+// In dto/meetings.rs
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct MeetingResponse {
+    /// Meeting UUID
+    pub id: Uuid,
+
+    /// Human-readable meeting code
+    #[schema(example = "MTG-12345")]
+    pub meeting_identifier: String,
+
+    /// Meeting title
+    #[schema(example = "Team Standup")]
+    pub title: String,
+
+    /// Meeting status
+    pub status: MeetingStatus,
+}
+
+#[derive(Serialize, Deserialize, ToSchema)]
+pub enum MeetingStatus {
+    Scheduled,
+    Ongoing,
+    Ended,
+    Cancelled,
+}
+```
+
+### Step 3: Register in OpenAPI Config
+
+Update `src/swagger/mod.rs`:
+
+```rust
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        // Existing paths...
+        crate::handlers::meetings::get_meeting,  // Add new path
+    ),
+    components(
+        schemas(
+            // Existing schemas...
+            crate::dto::MeetingResponse,  // Add new schema
+            crate::dto::MeetingStatus,
+        )
+    ),
+    tags(
+        (name = "Authentication", description = "User authentication endpoints"),
+        (name = "Meetings", description = "Meeting management endpoints"),  // Add tag
+    ),
+    // ...
+)]
+pub struct ApiDoc;
+```
+
+### Step 4: Add Route
+
+```rust
+// In routes/meetings.rs
+
+pub fn meetings_routes(state: AppState) -> Router {
+    Router::new()
+        .route("/", get(list_meetings).post(create_meeting))
+        .route("/:id", get(get_meeting).put(update_meeting).delete(delete_meeting))
+        .with_state(state)
+}
+```
+
+## Common Patterns
+
+### Query Parameters
+
+```rust
+#[utoipa::path(
+    get,
+    path = "/api/v1/meetings",
+    params(
+        ("page" = Option<u32>, Query, description = "Page number"),
+        ("limit" = Option<u32>, Query, description = "Items per page"),
+        ("status" = Option<String>, Query, description = "Filter by status")
+    ),
+    responses(
+        (status = 200, description = "Meeting list", body = PaginatedMeetings)
+    )
+)]
+```
+
+### Request Body
+
+```rust
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings",
+    request_body = CreateMeetingRequest,
+    responses(
+        (status = 201, description = "Meeting created", body = MeetingResponse)
+    )
+)]
+```
+
+### Security (JWT)
+
+```rust
+#[utoipa::path(
+    // ...
+    security(
+        ("bearer_auth" = [])
+    ),
+)]
+```
+
+### Path Parameters
+
+```rust
+#[utoipa::path(
+    delete,
+    path = "/api/v1/meetings/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Meeting ID to delete")
+    ),
+    // ...
+)]
+```
+
+## Schema Annotations
+
+### Field Examples
+
+```rust
+#[derive(ToSchema)]
+pub struct User {
+    #[schema(example = "john@example.com")]
+    pub email: String,
+
+    #[schema(example = 25, minimum = 0, maximum = 150)]
+    pub age: i32,
+
+    #[schema(example = "2026-01-17T10:00:00Z")]
+    pub created_at: DateTime<Utc>,
+}
+```
+
+### Enums
+
+```rust
+#[derive(ToSchema, Serialize, Deserialize)]
+pub enum UserRole {
+    User,
+    Admin,
+}
+```
+
+### Optional Fields
+
+```rust
+#[derive(ToSchema)]
+pub struct UpdateRequest {
+    #[schema(nullable = true)]
+    pub name: Option<String>,
+}
+```
+
+## Viewing Documentation
+
+1. **Start the server**:
+   ```bash
+   cargo run
+   ```
+
+2. **Access Swagger UI**:
+   ```
+   http://localhost:8080/swagger-ui
+   ```
+
+3. **Get OpenAPI JSON**:
+   ```
+   http://localhost:8080/api-docs/openapi.json
+   ```
+
+## Troubleshooting
+
+### "Schema not found" Error
+
+Ensure all schemas used in responses are registered in `#[openapi(components(schemas(...)))]`.
+
+### Handler Not Appearing
+
+1. Check the `#[utoipa::path]` macro is present
+2. Verify the path is added to `paths(...)` in the OpenApi derive
+3. Ensure the function is `pub`
+
+### Schema Fields Not Showing
+
+Add `#[schema(...)]` attributes for examples and documentation.
+
+## Best Practices
+
+1. **Add examples** - Use `#[schema(example = "...")]` for all fields
+2. **Document all responses** - Include error responses (400, 401, 404, 500)
+3. **Use tags** - Group related endpoints with tags
+4. **Add descriptions** - Use doc comments (`///`) on structs and fields
+5. **Keep DTOs separate** - Don't use database models directly in API
 
 ---
 
-## 📊 Documentation Workflow
-
-### For New Features
-
-```
-1. Write Code
-2. Write Tests
-3. Add API Endpoint
-4. Create/Update YAML
-5. Build Swagger Docs
-6. Test in Swagger UI
-7. Commit Changes
-```
-
-### Daily Development
-
-```bash
-# 1. Make changes to YAML files
-vim src/swagger/paths/meetings.paths.yaml
-
-# 2. Build documentation
-python scripts/build_swagger.py
-
-# 3. Restart server
-cargo run
-
-# 4. View at http://localhost:8080/swagger-ui
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Problem: "openapi.json not found"
-
-**Solution:** Run the build script:
-
-```bash
-python scripts/build_swagger.py
-```
-
-### Problem: Changes not showing in Swagger UI
-
-**Solution:**
-
-1. Rebuild documentation: `python scripts/build_swagger.py`
-2. Restart server: `cargo run`
-3. Hard refresh browser: `Ctrl+Shift+R`
-
-### Problem: YAML syntax errors
-
-**Solution:**
-
-- Check indentation (use 2 spaces, not tabs)
-- Ensure colons have spaces after them: `key: value`
-- Arrays use hyphens: `- item`
-- Strings with special characters need quotes
-
----
-
-## 📖 Quick Reference
-
-### Common Schema Types
-
-```yaml
-# String
-name:
-  type: string
-  example: John Doe
-
-# UUID
-id:
-  type: string
-  format: uuid
-  example: "123e4567-e89b-12d3-a456-426614174000"
-
-# Integer
-age:
-  type: integer
-  minimum: 0
-  maximum: 150
-
-# Boolean
-isActive:
-  type: boolean
-  example: true
-
-# Date/Time
-createdAt:
-  type: string
-  format: date-time
-  example: "2026-01-16T10:00:00Z"
-
-# Enum
-status:
-  type: string
-  enum: [pending, approved, rejected]
-  example: pending
-
-# Array
-tags:
-  type: array
-  items:
-    type: string
-
-# Object Reference
-user:
-  $ref: "#/components/schemas/User"
-```
-
-### HTTP Status Codes
-
-| Code | Meaning      | When to Use                           |
-| ---- | ------------ | ------------------------------------- |
-| 200  | OK           | Successful GET, PUT, PATCH            |
-| 201  | Created      | Successful POST (resource created)    |
-| 204  | No Content   | Successful DELETE                     |
-| 400  | Bad Request  | Validation error                      |
-| 401  | Unauthorized | Missing/invalid auth token            |
-| 403  | Forbidden    | Valid token, insufficient permissions |
-| 404  | Not Found    | Resource doesn't exist                |
-| 409  | Conflict     | Resource already exists               |
-| 500  | Server Error | Internal server error                 |
-
----
-
-## ✅ Checklist for Good Documentation
-
-- [ ] Every endpoint has a summary and description
-- [ ] Every endpoint has appropriate tags
-- [ ] Every endpoint has an operationId
-- [ ] Request bodies have schema references
-- [ ] All responses are documented (200, 400, 401, 404, 500)
-- [ ] Parameters have descriptions and examples
-- [ ] Schemas have property descriptions
-- [ ] Examples are provided for complex objects
-- [ ] Security requirements are specified where needed
-- [ ] Documentation builds without errors
-
----
-
-**🎉 You're now ready to document your API! Happy documenting!**
+**Last Updated**: 2026-01-17

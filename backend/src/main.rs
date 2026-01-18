@@ -1,41 +1,77 @@
 use axum::Router;
 use dotenvy::dotenv;
-use sea_orm::Database;
-use std::env;
+use sea_orm::{ConnectOptions, Database};
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use backend::config::logging;
 
-use backend::{routes, state::AppState, swagger};
+
+use backend::{
+    config::{AppConfig, EmailConfig},
+    routes,
+    state::AppState,
+    swagger,
+    workers::spawn_email_worker,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Load environment variables
     dotenv().ok();
 
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "backend=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Initialize logging (terminal + file)
+    let _guard = logging::init_logging();
 
-    // Get configuration from environment
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    let jwt_secret = env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "your-secret-key-change-this-in-production".to_string());
-    let host = env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    // Load app configuration
+    let app_config = AppConfig::from_env().expect("Failed to load app configuration");
 
-    // Connect to database
+    // Connect to database with connection pool settings
     tracing::info!("Connecting to database...");
-    let db = Database::connect(&database_url).await?;
+    let mut db_opts = ConnectOptions::new(&app_config.database_url);
+    db_opts
+        .max_connections(10)
+        .min_connections(2)
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .acquire_timeout(std::time::Duration::from_secs(30))
+        .idle_timeout(std::time::Duration::from_secs(300))
+        .max_lifetime(std::time::Duration::from_secs(1800))
+        .sqlx_logging(false);
+    let db = Database::connect(db_opts).await?;
     tracing::info!("✅ Database connected successfully");
 
+    // Load email configuration
+    let email_config = match EmailConfig::from_env() {
+        Ok(config) => {
+            tracing::info!("✅ Email configuration loaded");
+            config
+        }
+        Err(e) => {
+            tracing::warn!(
+                "⚠️ Email not configured: {}. Using defaults (emails will queue but not send).",
+                e
+            );
+            EmailConfig::default()
+        }
+    };
+
     // Create application state
-    let state = AppState::new(db, jwt_secret);
+    let state = AppState::new(db.clone(), app_config.jwt_secret.clone(), &email_config);
+
+    // Start email worker (only if SMTP is configured)
+    let _email_worker = if !email_config.smtp_host.is_empty() {
+        match spawn_email_worker(db, &email_config) {
+            Some(handle) => {
+                tracing::info!("✅ Email worker started");
+                Some(handle)
+            }
+            None => {
+                tracing::warn!("⚠️ Failed to start email worker");
+                None
+            }
+        }
+    } else {
+        tracing::info!("ℹ️ Email worker not started (SMTP not configured)");
+        None
+    };
 
     // Configure CORS
     let cors = CorsLayer::new()
@@ -51,13 +87,13 @@ async fn main() -> anyhow::Result<()> {
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
     // Start server
-    let addr = format!("{}:{}", host, port);
+    let addr = app_config.server_addr();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     tracing::info!("🚀 Server running on http://{}", addr);
     tracing::info!("📚 Swagger UI: http://{}/swagger-ui", addr);
     tracing::info!("📖 API Docs: http://{}/api-docs/openapi.json", addr);
-    
+
     axum::serve(listener, app).await?;
 
     Ok(())

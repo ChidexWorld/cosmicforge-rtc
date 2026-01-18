@@ -14,6 +14,9 @@ pub struct Model {
     pub status: UserStatus,
     pub verification_token: Option<String>,
     pub token_expires_at: Option<DateTime>,
+    pub reset_token: Option<String>,
+    pub reset_token_expires_at: Option<DateTime>,
+
     pub created_at: DateTime,
     pub updated_at: DateTime,
     pub last_login: Option<DateTime>,

@@ -7,8 +7,10 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 use validator::Validate;
 
+
+
 use crate::{
-    services::auth::{generate_verification_token, hash_password, verify_password},
+    services::auth::{generate_verification_code, hash_password, verify_password},
     dto::*,
     error::{ApiError, ApiResult},
     models::{
@@ -51,7 +53,7 @@ pub async fn register(
     let password_hash = hash_password(&payload.password)?;
 
     // Generate verification token
-    let verification_token = generate_verification_token();
+    let verification_token = generate_verification_code();
     let token_expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::hours(24);
 
     // Create user
@@ -68,12 +70,30 @@ pub async fn register(
         created_at: Set(chrono::Utc::now().naive_utc()),
         updated_at: Set(chrono::Utc::now().naive_utc()),
         last_login: Set(None),
+        reset_token: Set(None),
+        reset_token_expires_at: Set(None),
     };
 
     let user = user.insert(&state.db).await?;
 
-    // TODO: Send verification email
-    tracing::info!("Verification token for {}: {}", user.email, verification_token);
+    // Queue verification email
+    match state
+        .email_service
+        .send_verification_email(&user.email, &user.username, &verification_token)
+        .await
+    {
+        Ok(job_id) => {
+            tracing::info!(
+                "Verification email queued for {}: job_id={}",
+                user.email,
+                job_id
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to queue verification email for {}: {}", user.email, e);
+            // Don't fail registration if email queueing fails - user can request resend
+        }
+    }
 
     let response = RegisterResponse {
         user_id: user.id,
@@ -100,6 +120,10 @@ pub async fn verify_email(
     State(state): State<AppState>,
     Json(payload): Json<VerifyEmailRequest>,
 ) -> ApiResult<Json<MessageResponse>> {
+    // Validate request
+    payload.validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
     // Find user with verification token
     let user = Users::find()
         .filter(users::Column::VerificationToken.eq(&payload.token))
@@ -219,6 +243,10 @@ pub async fn refresh_token(
     State(state): State<AppState>,
     Json(payload): Json<RefreshTokenRequest>,
 ) -> ApiResult<Json<RefreshTokenResponse>> {
+    // Validate request
+    payload.validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
     // Verify refresh token
     let claims = state.jwt_service.verify_token(&payload.refresh_token)?;
 
@@ -257,5 +285,172 @@ pub async fn logout() -> ApiResult<Json<MessageResponse>> {
     // For now, just return success
     Ok(Json(MessageResponse {
         message: "Logged out successfully".to_string(),
+    }))
+}
+
+/// Resend verification email
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/resend-verification",
+    tag = "Authentication",
+    request_body = ResendVerificationRequest,
+    responses(
+        (status = 200, description = "Verification email sent", body = MessageResponse),
+        (status = 400, description = "Validation error"),
+        (status = 404, description = "User not found"),
+    )
+)]
+pub async fn resend_verification_email(
+    State(state): State<AppState>,
+    Json(payload): Json<ResendVerificationRequest>,
+) -> ApiResult<Json<MessageResponse>> {
+    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    let user = Users::find()
+        .filter(users::Column::Email.eq(&payload.email))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
+
+    if user.status == users::UserStatus::Active {
+        return Err(ApiError::BadRequest("User is already verified".to_string()));
+    }
+
+    // Generate new token
+    let verification_token = generate_verification_code();
+    let token_expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::hours(24);
+
+    let mut active_user: users::ActiveModel = user.clone().into();
+    active_user.verification_token = Set(Some(verification_token.clone()));
+    active_user.token_expires_at = Set(Some(token_expires_at));
+    active_user.update(&state.db).await?;
+
+    // Send email
+    if let Err(e) = state
+        .email_service
+        .send_verification_email(&payload.email, &user.username, &verification_token)
+        .await
+    {
+        tracing::error!("Failed to resend verification email: {}", e);
+    }
+
+    Ok(Json(MessageResponse {
+        message: "Verification email sent".to_string(),
+    }))
+}
+
+/// Request password reset
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/forgot-password",
+    tag = "Authentication",
+    request_body = ForgotPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset code sent", body = MessageResponse),
+        (status = 400, description = "Validation error"),
+        (status = 404, description = "User not found"),
+    )
+)]
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    Json(payload): Json<ForgotPasswordRequest>,
+) -> ApiResult<Json<MessageResponse>> {
+    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    // Find user
+    let user = Users::find()
+        .filter(users::Column::Email.eq(&payload.email))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("No account found with this email address".to_string()))?;
+
+    // Only allow local auth users to reset password
+    if user.auth_type != users::AuthType::Local {
+        return Err(ApiError::BadRequest(
+            "This account uses Google sign-in. Please use Google to access your account.".to_string()
+        ));
+    }
+
+    // Generate 6-digit reset code
+    let reset_code = generate_verification_code();
+    let expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::hours(1);
+
+    let mut active_user: users::ActiveModel = user.clone().into();
+    active_user.reset_token = Set(Some(reset_code.clone()));
+    active_user.reset_token_expires_at = Set(Some(expires_at));
+    active_user.updated_at = Set(chrono::Utc::now().naive_utc());
+    active_user.update(&state.db).await?;
+
+    // Queue reset email
+    match state
+        .email_service
+        .send_password_reset_email(&user.email, &user.username, &reset_code)
+        .await
+    {
+        Ok(job_id) => {
+            tracing::info!(
+                "Password reset email queued for {}: job_id={}",
+                user.email,
+                job_id
+            );
+        }
+        Err(e) => {
+            tracing::error!("Failed to queue password reset email for {}: {}", user.email, e);
+        }
+    }
+
+    Ok(Json(MessageResponse {
+        message: "Password reset code sent to your email".to_string(),
+    }))
+}
+
+/// Reset password with token
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/reset-password",
+    tag = "Authentication",
+    request_body = ResetPasswordRequest,
+    responses(
+        (status = 200, description = "Password reset successfully", body = MessageResponse),
+        (status = 400, description = "Invalid or expired token"),
+    )
+)]
+pub async fn reset_password(
+    State(state): State<AppState>,
+    Json(payload): Json<ResetPasswordRequest>,
+) -> ApiResult<Json<MessageResponse>> {
+    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    let user = Users::find()
+        .filter(users::Column::ResetToken.eq(&payload.token))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired reset token".to_string()))?;
+
+    // Verify email matches the user
+    if user.email != payload.email {
+        return Err(ApiError::BadRequest("Invalid email or reset token".to_string()));
+    }
+
+    if let Some(expires_at) = user.reset_token_expires_at {
+        if expires_at < chrono::Utc::now().naive_utc() {
+            return Err(ApiError::BadRequest("Reset token has expired".to_string()));
+        }
+    } else {
+         return Err(ApiError::BadRequest("Invalid reset token".to_string()));
+    }
+
+    let password_hash = hash_password(&payload.new_password)?;
+
+    let mut user: users::ActiveModel = user.into();
+    user.password_hash = Set(Some(password_hash));
+    user.reset_token = Set(None);
+    user.reset_token_expires_at = Set(None);
+    user.updated_at = Set(chrono::Utc::now().naive_utc());
+    
+    user.update(&state.db).await?;
+
+    Ok(Json(MessageResponse {
+        message: "Password reset successfully".to_string(),
     }))
 }

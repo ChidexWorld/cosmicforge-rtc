@@ -10,6 +10,9 @@ use axum::Router;
         crate::handlers::auth::login,
         crate::handlers::auth::refresh_token,
         crate::handlers::auth::logout,
+        crate::handlers::auth::resend_verification_email,
+        crate::handlers::auth::forgot_password,
+        crate::handlers::auth::reset_password,
     ),
     components(
         schemas(
@@ -22,6 +25,9 @@ use axum::Router;
             crate::dto::RefreshTokenRequest,
             crate::dto::RefreshTokenResponse,
             crate::dto::MessageResponse,
+            crate::dto::ResendVerificationRequest,
+            crate::dto::ForgotPasswordRequest,
+            crate::dto::ResetPasswordRequest,
         )
     ),
     tags(

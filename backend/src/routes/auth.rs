@@ -11,4 +11,8 @@ pub fn auth_routes() -> Router<AppState> {
         .route("/login", post(auth::login))
         .route("/refresh", post(auth::refresh_token))
         .route("/logout", post(auth::logout))
+        .route("/resend-verification", post(auth::resend_verification_email))
+        .route("/forgot-password", post(auth::forgot_password))
+        .route("/reset-password", post(auth::reset_password))
+
 }

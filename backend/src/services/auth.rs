@@ -89,19 +89,10 @@ pub fn verify_password(password: &str, hash: &str) -> ApiResult<bool> {
         .map_err(|e| ApiError::InternalError(format!("Failed to verify password: {}", e)))
 }
 
-// Generate random verification token
-pub fn generate_verification_token() -> String {
+// Generate random 6-digit verification code (numeric only for easy entry)
+pub fn generate_verification_code() -> String {
     use rand::Rng;
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
-                            abcdefghijklmnopqrstuvwxyz\
-                            0123456789";
-    const TOKEN_LEN: usize = 64;
     let mut rng = rand::thread_rng();
-
-    (0..TOKEN_LEN)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect()
+    let code: u32 = rng.gen_range(100000..1000000);
+    code.to_string()
 }

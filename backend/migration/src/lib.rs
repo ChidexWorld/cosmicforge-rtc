@@ -9,6 +9,9 @@ mod m20260116_000005_create_chat_messages;
 mod m20260116_000006_create_session_logs;
 mod m20260116_000007_create_webhooks;
 mod m20260116_000008_create_api_keys;
+mod m20260117_000001_create_email_jobs;
+mod m20260117_000002_add_reset_token_to_users;
+
 
 pub struct Migrator;
 
@@ -24,6 +27,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260116_000006_create_session_logs::Migration),
             Box::new(m20260116_000007_create_webhooks::Migration),
             Box::new(m20260116_000008_create_api_keys::Migration),
+            Box::new(m20260117_000001_create_email_jobs::Migration),
+            Box::new(m20260117_000002_add_reset_token_to_users::Migration),
+
         ]
     }
 }
