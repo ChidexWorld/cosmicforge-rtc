@@ -230,7 +230,19 @@ Failures should never break meetings.
 4.  Rate limiting on joins
 5.  Status checks (deactivated users blocked)
 
-## 11. Final Mental Model (Summary)
+## 11. User Profile APIs
+
+These APIs allow users to manage their own identity and account status.
+
+**Checklist:**
+
+- [ ] Implement `GET /users/me`
+- [ ] Implement `PATCH /users/me`
+- [ ] Implement `POST /users/me/deactivate`
+- [ ] Enforce auth-only access
+- [ ] Block access for deactivated users
+
+## 12. Final Mental Model (Summary)
 
 - **Users** own meetings
 - **Meetings** own participants
