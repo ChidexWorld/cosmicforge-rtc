@@ -39,25 +39,14 @@ impl MigrationTrait for Migration {
                             .string_len(255)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(EmailJobs::ToName)
-                            .string_len(255),
-                    )
+                    .col(ColumnDef::new(EmailJobs::ToName).string_len(255))
                     .col(
                         ColumnDef::new(EmailJobs::Subject)
                             .string_len(500)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(EmailJobs::HtmlBody)
-                            .text()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(EmailJobs::TextBody)
-                            .text()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(EmailJobs::HtmlBody).text().not_null())
+                    .col(ColumnDef::new(EmailJobs::TextBody).text().not_null())
                     .col(
                         ColumnDef::new(EmailJobs::Status)
                             .custom(Alias::new("email_job_status"))
@@ -76,14 +65,8 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(3),
                     )
-                    .col(
-                        ColumnDef::new(EmailJobs::NextRetryAt)
-                            .timestamp(),
-                    )
-                    .col(
-                        ColumnDef::new(EmailJobs::LastError)
-                            .text(),
-                    )
+                    .col(ColumnDef::new(EmailJobs::NextRetryAt).timestamp())
+                    .col(ColumnDef::new(EmailJobs::LastError).text())
                     .col(
                         ColumnDef::new(EmailJobs::CreatedAt)
                             .timestamp()
@@ -96,10 +79,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(EmailJobs::SentAt)
-                            .timestamp(),
-                    )
+                    .col(ColumnDef::new(EmailJobs::SentAt).timestamp())
                     .to_owned(),
             )
             .await?;

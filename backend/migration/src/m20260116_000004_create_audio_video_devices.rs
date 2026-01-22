@@ -12,7 +12,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(
-                "CREATE TYPE device_type AS ENUM ('audio_input', 'audio_output', 'video_input');"
+                "CREATE TYPE device_type AS ENUM ('audio_input', 'audio_output', 'video_input');",
             )
             .await?;
 

@@ -1,54 +1,78 @@
+//! Meeting Handlers
+//!
+//! HTTP handlers for meeting lifecycle management with LiveKit integration.
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Extension, Json,
 };
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set};
-use serde::Deserialize;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+};
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    auth::Claims,
-    dto::*,
+    dto::{
+        naive_to_utc, utc_to_naive, ApiResponse, CreateMeetingRequest, EndMeetingResponse,
+        JoinMeetingRequest, JoinMeetingResponse, ListMeetingsQuery, MeetingResponse,
+        PaginatedResponse, PaginationMeta, UpdateMeetingRequest,
+    },
     error::{ApiError, ApiResult},
     models::{
-        meetings::{self, Entity as Meetings},
-        participants::{self, Entity as Participants},
+        meetings::{self, Entity as Meetings, MeetingStatus},
+        participants::{self, Entity as Participants, ParticipantRole, ParticipantStatus},
+        session_logs::{self, EventType},
     },
+    services::auth::Claims,
     state::AppState,
+    utils::{format_duration, format_role, format_status, generate_meeting_identifier},
 };
 
-#[derive(Debug, Deserialize)]
-pub struct ListMeetingsQuery {
-    pub page: Option<u64>,
-    pub limit: Option<u64>,
-    pub status: Option<String>,
-}
-
-/// List meetings
+/// List meetings for the authenticated user
+#[utoipa::path(
+    get,
+    path = "/api/v1/meetings",
+    tag = "Meetings",
+    params(
+        ("page" = Option<u64>, Query, description = "Page number (default: 1)"),
+        ("limit" = Option<u64>, Query, description = "Items per page (default: 20, max: 100)"),
+        ("status" = Option<String>, Query, description = "Filter by status: scheduled, live, ended, cancelled")
+    ),
+    responses(
+        (status = 200, description = "List of meetings", body = PaginatedMeetingResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_meetings(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Query(query): Query<ListMeetingsQuery>,
 ) -> ApiResult<Json<PaginatedResponse<MeetingResponse>>> {
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
+    let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     let page = query.page.unwrap_or(1).max(1);
     let limit = query.limit.unwrap_or(20).min(100);
 
-    let mut select = Meetings::find()
-        .filter(meetings::Column::TenantId.eq(tenant_id));
+    let mut select = Meetings::find().filter(meetings::Column::HostId.eq(user_id));
 
     // Filter by status if provided
-    if let Some(status) = query.status {
+    if let Some(status) = &query.status {
         let meeting_status = match status.as_str() {
-            "scheduled" => meetings::MeetingStatus::Scheduled,
-            "ongoing" => meetings::MeetingStatus::Ongoing,
-            "ended" => meetings::MeetingStatus::Ended,
-            "cancelled" => meetings::MeetingStatus::Cancelled,
-            _ => return Err(ApiError::ValidationError("Invalid status".to_string())),
+            "scheduled" => MeetingStatus::Scheduled,
+            "live" | "ongoing" => MeetingStatus::Ongoing,
+            "ended" => MeetingStatus::Ended,
+            "cancelled" => MeetingStatus::Cancelled,
+            _ => {
+                return Err(ApiError::ValidationError(
+                    "Invalid status. Use: scheduled, live, ended, cancelled".to_string(),
+                ))
+            }
         };
         select = select.filter(meetings::Column::Status.eq(meeting_status));
     }
@@ -57,27 +81,26 @@ pub async fn list_meetings(
     let total = select.clone().count(&state.db).await?;
 
     // Get paginated results
-    let meetings = select
+    let meetings_list = select
         .order_by_desc(meetings::Column::CreatedAt)
         .paginate(&state.db, limit)
         .fetch_page(page - 1)
         .await?;
 
-    let data: Vec<MeetingResponse> = meetings
+    let data: Vec<MeetingResponse> = meetings_list
         .into_iter()
         .map(|m| MeetingResponse {
             id: m.id,
             meeting_identifier: m.meeting_identifier,
-            tenant_id: m.tenant_id,
             host_id: m.host_id,
             title: m.title,
             metadata: m.metadata,
             is_private: m.is_private,
-            start_time: m.start_time,
-            end_time: m.end_time,
-            status: format!("{:?}", m.status).to_lowercase(),
-            created_at: m.created_at,
-            updated_at: m.updated_at,
+            start_time: naive_to_utc(m.start_time),
+            end_time: m.end_time.map(naive_to_utc),
+            status: format_status(&m.status),
+            created_at: naive_to_utc(m.created_at),
+            updated_at: naive_to_utc(m.updated_at),
         })
         .collect();
 
@@ -95,38 +118,82 @@ pub async fn list_meetings(
     }))
 }
 
-/// Create meeting
+/// Create a new meeting
+///
+/// The authenticated user becomes the host. Meeting starts as "scheduled".
+/// No RTC resources are allocated at this point.
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings",
+    tag = "Meetings",
+    request_body = CreateMeetingRequest,
+    responses(
+        (status = 201, description = "Meeting created successfully", body = MeetingApiResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn create_meeting(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Json(payload): Json<CreateMeetingRequest>,
 ) -> ApiResult<(StatusCode, Json<ApiResponse<MeetingResponse>>)> {
     // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    // Generate meeting identifier
-    let meeting_identifier = format!("MTG-{}", Uuid::new_v4().to_string()[..8].to_uppercase());
+    let now = chrono::Utc::now();
 
-    // Create meeting
+    // Validate start time is in the future (at least 1 minute from now)
+    if payload.start_time <= now + chrono::Duration::minutes(1) {
+        return Err(ApiError::ValidationError(
+            "Start time must be at least 1 minute in the future".to_string(),
+        ));
+    }
+
+    // Validate time range
+    if let Some(end_time) = payload.end_time {
+        if end_time <= payload.start_time {
+            return Err(ApiError::ValidationError(
+                "End time must be after start time".to_string(),
+            ));
+        }
+
+        // Validate meeting duration is reasonable (max 24 hours)
+        let duration = end_time - payload.start_time;
+        if duration > chrono::Duration::hours(24) {
+            return Err(ApiError::ValidationError(
+                "Meeting duration cannot exceed 24 hours".to_string(),
+            ));
+        }
+    }
+
+    // Generate meeting identifier (human-friendly code)
+    let meeting_identifier = generate_meeting_identifier();
+    let meeting_id = Uuid::new_v4();
+    let now = utc_to_naive(chrono::Utc::now());
+
+    // Create meeting with status = scheduled
     let meeting = meetings::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(meeting_id),
         meeting_identifier: Set(meeting_identifier),
-        tenant_id: Set(tenant_id),
+        user_id: Set(Some(user_id)),
         host_id: Set(user_id),
         title: Set(payload.title),
         metadata: Set(payload.metadata),
         is_private: Set(payload.is_private.unwrap_or(false)),
-        start_time: Set(payload.start_time),
-        end_time: Set(payload.end_time),
-        status: Set(meetings::MeetingStatus::Scheduled),
-        created_at: Set(chrono::Utc::now()),
-        updated_at: Set(chrono::Utc::now()),
+        start_time: Set(utc_to_naive(payload.start_time)),
+        end_time: Set(payload.end_time.map(utc_to_naive)),
+        status: Set(MeetingStatus::Scheduled),
+        created_at: Set(now),
+        updated_at: Set(now),
     };
 
     let meeting = meeting.insert(&state.db).await?;
@@ -134,35 +201,53 @@ pub async fn create_meeting(
     let response = MeetingResponse {
         id: meeting.id,
         meeting_identifier: meeting.meeting_identifier,
-        tenant_id: meeting.tenant_id,
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
-        status: format!("{:?}", meeting.status).to_lowercase(),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        start_time: naive_to_utc(meeting.start_time),
+        end_time: meeting.end_time.map(naive_to_utc),
+        status: format_status(&meeting.status),
+        created_at: naive_to_utc(meeting.created_at),
+        updated_at: naive_to_utc(meeting.updated_at),
     };
 
-    Ok((StatusCode::CREATED, Json(ApiResponse {
-        success: true,
-        data: response,
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse {
+            success: true,
+            data: response,
+        }),
+    ))
 }
 
-/// Get meeting by ID
+/// Get a meeting by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/meetings/{id}",
+    tag = "Meetings",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    responses(
+        (status = 200, description = "Meeting details", body = MeetingApiResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Meeting not found")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_meeting(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<ApiResponse<MeetingResponse>>> {
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
+    let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     let meeting = Meetings::find_by_id(id)
-        .filter(meetings::Column::TenantId.eq(tenant_id))
+        .filter(meetings::Column::HostId.eq(user_id))
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
@@ -170,16 +255,15 @@ pub async fn get_meeting(
     let response = MeetingResponse {
         id: meeting.id,
         meeting_identifier: meeting.meeting_identifier,
-        tenant_id: meeting.tenant_id,
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
-        status: format!("{:?}", meeting.status).to_lowercase(),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        start_time: naive_to_utc(meeting.start_time),
+        end_time: meeting.end_time.map(naive_to_utc),
+        status: format_status(&meeting.status),
+        created_at: naive_to_utc(meeting.created_at),
+        updated_at: naive_to_utc(meeting.updated_at),
     };
 
     Ok(Json(ApiResponse {
@@ -188,37 +272,104 @@ pub async fn get_meeting(
     }))
 }
 
-/// Update meeting
+/// Update a meeting (host only)
+#[utoipa::path(
+    put,
+    path = "/api/v1/meetings/{id}",
+    tag = "Meetings",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    request_body = UpdateMeetingRequest,
+    responses(
+        (status = 200, description = "Meeting updated successfully", body = MeetingApiResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Only host can update"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Cannot update ongoing or ended meetings")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn update_meeting(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateMeetingRequest>,
 ) -> ApiResult<Json<ApiResponse<MeetingResponse>>> {
-    // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     // Find meeting
     let meeting = Meetings::find_by_id(id)
-        .filter(meetings::Column::TenantId.eq(tenant_id))
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
 
     // Check if user is host
     if meeting.host_id != user_id {
-        return Err(ApiError::Forbidden("Only the host can update the meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Only the host can update the meeting".to_string(),
+        ));
+    }
+
+    // Cannot update ended meetings
+    if meeting.status == MeetingStatus::Ended {
+        return Err(ApiError::Conflict(
+            "Cannot update an ended meeting".to_string(),
+        ));
+    }
+
+    // Cannot update ongoing meetings (meeting has started)
+    if meeting.status == MeetingStatus::Ongoing {
+        return Err(ApiError::Conflict(
+            "Cannot update a meeting that has already started. Please end the meeting first if you need to make changes.".to_string(),
+        ));
+    }
+
+    let now = chrono::Utc::now();
+
+    // Determine final start_time and end_time after update
+    let final_start_time = payload
+        .start_time
+        .unwrap_or_else(|| naive_to_utc(meeting.start_time));
+    let final_end_time = payload
+        .end_time
+        .or_else(|| meeting.end_time.map(naive_to_utc));
+
+    // Validate start time is in the future (allow updates up to current time for ongoing meetings)
+    if meeting.status == MeetingStatus::Scheduled && final_start_time <= now {
+        return Err(ApiError::ValidationError(
+            "Start time must be in the future for scheduled meetings".to_string(),
+        ));
+    }
+
+    // Validate time range
+    if let Some(end_time) = final_end_time {
+        if end_time <= final_start_time {
+            return Err(ApiError::ValidationError(
+                "End time must be after start time".to_string(),
+            ));
+        }
+
+        // Validate meeting duration is reasonable (max 24 hours)
+        let duration = end_time - final_start_time;
+        if duration > chrono::Duration::hours(24) {
+            return Err(ApiError::ValidationError(
+                "Meeting duration cannot exceed 24 hours".to_string(),
+            ));
+        }
     }
 
     // Update meeting
     let mut meeting: meetings::ActiveModel = meeting.into();
-    
+
     if let Some(title) = payload.title {
         meeting.title = Set(title);
     }
@@ -226,31 +377,30 @@ pub async fn update_meeting(
         meeting.is_private = Set(is_private);
     }
     if let Some(start_time) = payload.start_time {
-        meeting.start_time = Set(start_time);
+        meeting.start_time = Set(utc_to_naive(start_time));
     }
     if let Some(end_time) = payload.end_time {
-        meeting.end_time = Set(Some(end_time));
+        meeting.end_time = Set(Some(utc_to_naive(end_time)));
     }
     if let Some(metadata) = payload.metadata {
         meeting.metadata = Set(Some(metadata));
     }
-    meeting.updated_at = Set(chrono::Utc::now());
+    meeting.updated_at = Set(utc_to_naive(chrono::Utc::now()));
 
     let meeting = meeting.update(&state.db).await?;
 
     let response = MeetingResponse {
         id: meeting.id,
         meeting_identifier: meeting.meeting_identifier,
-        tenant_id: meeting.tenant_id,
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
-        status: format!("{:?}", meeting.status).to_lowercase(),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        start_time: naive_to_utc(meeting.start_time),
+        end_time: meeting.end_time.map(naive_to_utc),
+        status: format_status(&meeting.status),
+        created_at: naive_to_utc(meeting.created_at),
+        updated_at: naive_to_utc(meeting.updated_at),
     };
 
     Ok(Json(ApiResponse {
@@ -259,7 +409,25 @@ pub async fn update_meeting(
     }))
 }
 
-/// Delete meeting
+/// Delete a meeting (host only, only scheduled meetings)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/meetings/{id}",
+    tag = "Meetings",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    responses(
+        (status = 204, description = "Meeting deleted successfully"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Only host can delete"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Can only delete scheduled meetings")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn delete_meeting(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -267,19 +435,25 @@ pub async fn delete_meeting(
 ) -> ApiResult<StatusCode> {
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     // Find meeting
     let meeting = Meetings::find_by_id(id)
-        .filter(meetings::Column::TenantId.eq(tenant_id))
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
 
     // Check if user is host
     if meeting.host_id != user_id {
-        return Err(ApiError::Forbidden("Only the host can delete the meeting".to_string()));
+        return Err(ApiError::Forbidden(
+            "Only the host can delete the meeting".to_string(),
+        ));
+    }
+
+    // Can only delete scheduled meetings (not live or ended)
+    if meeting.status != MeetingStatus::Scheduled {
+        return Err(ApiError::Conflict(
+            "Can only delete scheduled meetings. Use cancel or end instead.".to_string(),
+        ));
     }
 
     // Delete meeting
@@ -288,161 +462,360 @@ pub async fn delete_meeting(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Start meeting
-pub async fn start_meeting(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<MeetingResponse>>> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-
-    // Find meeting
-    let meeting = Meetings::find_by_id(id)
-        .filter(meetings::Column::TenantId.eq(tenant_id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
-
-    // Check if user is host
-    if meeting.host_id != user_id {
-        return Err(ApiError::Forbidden("Only the host can start the meeting".to_string()));
-    }
-
-    // Check if meeting can be started
-    if meeting.status != meetings::MeetingStatus::Scheduled {
-        return Err(ApiError::Conflict("Meeting has already started or ended".to_string()));
-    }
-
-    // Update meeting status
-    let mut meeting: meetings::ActiveModel = meeting.into();
-    meeting.status = Set(meetings::MeetingStatus::Ongoing);
-    meeting.updated_at = Set(chrono::Utc::now());
-
-    let meeting = meeting.update(&state.db).await?;
-
-    let response = MeetingResponse {
-        id: meeting.id,
-        meeting_identifier: meeting.meeting_identifier,
-        tenant_id: meeting.tenant_id,
-        host_id: meeting.host_id,
-        title: meeting.title,
-        metadata: meeting.metadata,
-        is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
-        status: format!("{:?}", meeting.status).to_lowercase(),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
-    };
-
-    Ok(Json(ApiResponse {
-        success: true,
-        data: response,
-    }))
-}
-
-/// End meeting
-pub async fn end_meeting(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-    Path(id): Path<Uuid>,
-) -> ApiResult<Json<ApiResponse<MeetingResponse>>> {
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-    let tenant_id = Uuid::parse_str(&claims.tenant_id)
-        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
-
-    // Find meeting
-    let meeting = Meetings::find_by_id(id)
-        .filter(meetings::Column::TenantId.eq(tenant_id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
-
-    // Check if user is host
-    if meeting.host_id != user_id {
-        return Err(ApiError::Forbidden("Only the host can end the meeting".to_string()));
-    }
-
-    // Update meeting status
-    let mut meeting: meetings::ActiveModel = meeting.into();
-    meeting.status = Set(meetings::MeetingStatus::Ended);
-    meeting.end_time = Set(Some(chrono::Utc::now()));
-    meeting.updated_at = Set(chrono::Utc::now());
-
-    let meeting = meeting.update(&state.db).await?;
-
-    let response = MeetingResponse {
-        id: meeting.id,
-        meeting_identifier: meeting.meeting_identifier,
-        tenant_id: meeting.tenant_id,
-        host_id: meeting.host_id,
-        title: meeting.title,
-        metadata: meeting.metadata,
-        is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
-        status: format!("{:?}", meeting.status).to_lowercase(),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
-    };
-
-    Ok(Json(ApiResponse {
-        success: true,
-        data: response,
-    }))
-}
-
-/// Join meeting
+/// Join a meeting
+///
+/// This is where control-plane meets real-time:
+/// 1. Validates meeting exists and is not ended
+/// 2. Creates a Participant record
+/// 3. Assigns role (host or participant)
+/// 4. Generates a short-lived LiveKit join token
+/// 5. If meeting is scheduled, transitions it to live
+/// 6. Returns join token to client
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings/{id}/join",
+    tag = "Meetings",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    request_body = JoinMeetingRequest,
+    responses(
+        (status = 200, description = "Successfully joined meeting", body = JoinMeetingApiResponse),
+        (status = 400, description = "Validation error - Invalid user_id or display_name"),
+        (status = 403, description = "Private meeting - guests not allowed"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Meeting has ended, cancelled, too early to join, or past scheduled end time")
+    )
+)]
 pub async fn join_meeting(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<JoinMeetingRequest>,
-) -> ApiResult<Json<ApiResponse<ParticipantResponse>>> {
+) -> ApiResult<Json<ApiResponse<JoinMeetingResponse>>> {
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
     // Find meeting
     let meeting = Meetings::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
 
-    // Check if meeting is private
-    if meeting.is_private {
-        // In a real implementation, check if user has invitation
-        return Err(ApiError::Forbidden("Meeting is private and requires invitation".to_string()));
+    // Use shared join logic
+    join_meeting_internal(state, meeting, payload).await
+}
+
+/// Internal helper function containing the core join logic
+/// This is shared between join_meeting (by UUID) and join_meeting_by_identifier
+async fn join_meeting_internal(
+    state: AppState,
+    meeting: meetings::Model,
+    payload: JoinMeetingRequest,
+) -> ApiResult<Json<ApiResponse<JoinMeetingResponse>>> {
+    // Check if meeting is ended - no joins allowed after ended
+    if meeting.status == MeetingStatus::Ended {
+        return Err(ApiError::Conflict("Meeting has ended".to_string()));
     }
 
-    // Create participant
+    if meeting.status == MeetingStatus::Cancelled {
+        return Err(ApiError::Conflict("Meeting has been cancelled".to_string()));
+    }
+
+    let now = chrono::Utc::now();
+    let start_time = naive_to_utc(meeting.start_time);
+
+    // Time-based validation for scheduled meetings
+    if meeting.status == MeetingStatus::Scheduled {
+        // Prevent joining too early (more than 15 minutes before start)
+        if now < start_time - chrono::Duration::minutes(15) {
+            let minutes_until_start = (start_time - now).num_minutes();
+            let wait_time = minutes_until_start - 15;
+            return Err(ApiError::Conflict(
+                format!(
+                    "Meeting hasn't started yet. Please try again in {}.",
+                    format_duration(wait_time)
+                )
+            ));
+        }
+    }
+
+    // Check if meeting has passed its scheduled end time
+    if let Some(end_time) = meeting.end_time {
+        let scheduled_end = naive_to_utc(end_time);
+        if now > scheduled_end {
+            // Meeting should have ended - prevent new joins
+            return Err(ApiError::Conflict(
+                "This meeting has passed its scheduled end time and is no longer accepting participants.".to_string()
+            ));
+        }
+    }
+
+    // Check if meeting is private (would require invitation check in real impl)
+    if meeting.is_private && payload.user_id.is_none() {
+        return Err(ApiError::Forbidden(
+            "This is a private meeting. Guests cannot join.".to_string(),
+        ));
+    }
+
+    // Validate user exists if user_id is provided
+    if let Some(user_id) = payload.user_id {
+        use crate::models::users::Entity as Users;
+
+        let user_exists = Users::find_by_id(user_id).one(&state.db).await?.is_some();
+
+        if !user_exists {
+            return Err(ApiError::ValidationError(
+                "User not found. Please provide a valid user_id or join as a guest.".to_string(),
+            ));
+        }
+    }
+
+    // Determine participant type and role
+    let is_host = payload
+        .user_id
+        .map(|uid| uid == meeting.host_id)
+        .unwrap_or(false);
+    let role = if is_host {
+        ParticipantRole::Host
+    } else {
+        ParticipantRole::Participant
+    };
+
+    // Create participant record
+    let participant_id = Uuid::new_v4();
+    let now = utc_to_naive(chrono::Utc::now());
+
+    // Determine initial status: waiting room for private meetings (except host)
+    let initial_status = if meeting.is_private && !is_host {
+        ParticipantStatus::Waiting
+    } else {
+        ParticipantStatus::Joined
+    };
+
     let participant = participants::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(participant_id),
         meeting_id: Set(meeting.id),
-        user_id: Set(None), // NULL for guests
-        role: Set(participants::ParticipantRole::Participant),
-        join_time: Set(chrono::Utc::now()),
+        user_id: Set(payload.user_id), // NULL for guests
+        role: Set(role.clone()),
+        join_time: Set(now),
         leave_time: Set(None),
-        status: Set(participants::ParticipantStatus::Joined),
+        status: Set(initial_status.clone()),
         is_muted: Set(false),
         is_video_on: Set(true),
         is_screen_sharing: Set(false),
         display_name: Set(payload.display_name.clone()),
     };
 
-    let participant = participant.insert(&state.db).await?;
+    let _participant = participant.insert(&state.db).await?;
 
-    let response = ParticipantResponse {
-        id: participant.id,
-        meeting_id: participant.meeting_id,
-        user_id: participant.user_id,
-        role: format!("{:?}", participant.role).to_lowercase(),
-        display_name: participant.display_name,
-        status: format!("{:?}", participant.status).to_lowercase(),
-        join_time: participant.join_time,
+    // If participant is in waiting room, return a different response
+    if initial_status == ParticipantStatus::Waiting {
+        return Ok(Json(ApiResponse {
+            success: true,
+            data: JoinMeetingResponse {
+                participant_id,
+                role: format_role(&role),
+                join_token: String::new(), // No token for waiting room
+                livekit_url: String::new(),
+                room_name: meeting.meeting_identifier.clone(),
+            },
+        }));
+    }
+
+    // If meeting is scheduled, transition to live (ongoing)
+    if meeting.status == MeetingStatus::Scheduled {
+        let mut meeting_update: meetings::ActiveModel = meeting.clone().into();
+        meeting_update.status = Set(MeetingStatus::Ongoing);
+        meeting_update.updated_at = Set(now);
+        meeting_update.update(&state.db).await?;
+
+        // Log the meeting start event
+        let session_log = session_logs::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            meeting_id: Set(meeting.id),
+            participant_id: Set(Some(participant_id)),
+            event_type: Set(EventType::MeetingStart),
+            event_time: Set(now),
+            metadata: Set(Some(serde_json::json!({
+                "started_by": participant_id.to_string(),
+                "display_name": payload.display_name
+            }))),
+        };
+        session_log.insert(&state.db).await?;
+    }
+
+    // Log the join event
+    let session_log = session_logs::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meeting_id: Set(meeting.id),
+        participant_id: Set(Some(participant_id)),
+        event_type: Set(EventType::ParticipantJoin),
+        event_time: Set(now),
+        metadata: Set(Some(serde_json::json!({
+            "display_name": payload.display_name,
+            "role": format_role(&role),
+            "is_guest": payload.user_id.is_none()
+        }))),
+    };
+    session_log.insert(&state.db).await?;
+
+    // Generate LiveKit join token
+    // Room name is the meeting identifier (human-friendly code)
+    let room_name = &meeting.meeting_identifier;
+    let join_token = state.livekit_service.generate_join_token(
+        room_name,
+        &participant_id.to_string(),
+        &payload.display_name,
+        is_host,
+    )?;
+
+    let response = JoinMeetingResponse {
+        participant_id,
+        role: format_role(&role),
+        join_token,
+        livekit_url: state.livekit_service.get_url().to_string(),
+        room_name: room_name.clone(),
     };
 
     Ok(Json(ApiResponse {
         success: true,
         data: response,
     }))
+}
+
+/// End a meeting (host only)
+///
+/// Terminates meeting for all participants and triggers session logs.
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings/{id}/end",
+    tag = "Meetings",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    responses(
+        (status = 200, description = "Meeting ended successfully", body = EndMeetingApiResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Only host can end meeting"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Meeting already ended")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn end_meeting(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<ApiResponse<EndMeetingResponse>>> {
+    let user_id = Uuid::parse_str(&claims.sub)
+        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
+
+    // Find meeting
+    let meeting = Meetings::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
+
+    // Check if user is host
+    if meeting.host_id != user_id {
+        return Err(ApiError::Forbidden(
+            "Only the host can end the meeting".to_string(),
+        ));
+    }
+
+    // Check if meeting can be ended
+    if meeting.status == MeetingStatus::Ended {
+        return Err(ApiError::Conflict("Meeting has already ended".to_string()));
+    }
+
+    let now = utc_to_naive(chrono::Utc::now());
+
+    // Update meeting status to ended
+    let mut meeting_update: meetings::ActiveModel = meeting.into();
+    meeting_update.status = Set(MeetingStatus::Ended);
+    meeting_update.end_time = Set(Some(now));
+    meeting_update.updated_at = Set(now);
+    meeting_update.update(&state.db).await?;
+
+    // Update all active participants to mark leave time
+    let active_participants = Participants::find()
+        .filter(participants::Column::MeetingId.eq(id))
+        .filter(participants::Column::LeaveTime.is_null())
+        .all(&state.db)
+        .await?;
+
+    for p in active_participants {
+        let mut participant: participants::ActiveModel = p.into();
+        participant.leave_time = Set(Some(now));
+        participant.update(&state.db).await?;
+    }
+
+    // Log the meeting end event
+    let session_log = session_logs::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meeting_id: Set(id),
+        participant_id: Set(None),
+        event_type: Set(EventType::MeetingEnd),
+        event_time: Set(now),
+        metadata: Set(Some(serde_json::json!({
+            "ended_by_host": user_id.to_string(),
+            "ended_at": naive_to_utc(now).to_rfc3339()
+        }))),
+    };
+    session_log.insert(&state.db).await?;
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: EndMeetingResponse {
+            status: "ended".to_string(),
+        },
+    }))
+}
+
+/// Join a meeting by meeting identifier (8-character code)
+///
+/// This endpoint allows joining using the human-friendly meeting code
+/// instead of the UUID. More convenient for users.
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings/join/{meeting_identifier}",
+    tag = "Meetings",
+    params(
+        ("meeting_identifier" = String, Path, description = "Meeting identifier (8-character code, e.g., ABCD1234)")
+    ),
+    request_body = JoinMeetingRequest,
+    responses(
+        (status = 200, description = "Successfully joined meeting", body = JoinMeetingApiResponse),
+        (status = 400, description = "Validation error - Invalid user_id or display_name"),
+        (status = 403, description = "Private meeting - guests not allowed"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Meeting has ended, cancelled, too early to join, or past scheduled end time")
+    )
+)]
+pub async fn join_meeting_by_identifier(
+    State(state): State<AppState>,
+    Path(meeting_identifier): Path<String>,
+    Json(payload): Json<JoinMeetingRequest>,
+) -> ApiResult<Json<ApiResponse<JoinMeetingResponse>>> {
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    // Find meeting by identifier
+    let meeting = Meetings::find()
+        .filter(meetings::Column::MeetingIdentifier.eq(&meeting_identifier))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| {
+            ApiError::NotFound(format!(
+                "Meeting with code '{}' not found",
+                meeting_identifier
+            ))
+        })?;
+
+    // Use shared join logic
+    join_meeting_internal(state, meeting, payload).await
 }

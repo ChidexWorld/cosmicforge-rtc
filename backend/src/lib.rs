@@ -10,4 +10,5 @@ pub mod services;
 pub mod state;
 pub mod swagger;
 pub mod templates;
+pub mod utils;
 pub mod workers;

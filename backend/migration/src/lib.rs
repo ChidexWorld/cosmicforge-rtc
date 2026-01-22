@@ -12,7 +12,6 @@ mod m20260116_000008_create_api_keys;
 mod m20260117_000001_create_email_jobs;
 mod m20260117_000002_add_reset_token_to_users;
 
-
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -29,7 +28,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260116_000008_create_api_keys::Migration),
             Box::new(m20260117_000001_create_email_jobs::Migration),
             Box::new(m20260117_000002_add_reset_token_to_users::Migration),
-
         ]
     }
 }

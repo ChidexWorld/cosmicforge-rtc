@@ -84,4 +84,3 @@ impl Related<super::session_logs::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-

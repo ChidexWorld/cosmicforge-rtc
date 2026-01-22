@@ -1,16 +1,15 @@
 use axum::Router;
+use backend::config::logging;
 use dotenvy::dotenv;
 use sea_orm::{ConnectOptions, Database};
 use tower_http::cors::{Any, CorsLayer};
-use backend::config::logging;
-
 
 use backend::{
-    config::{AppConfig, EmailConfig},
+    config::{AppConfig, EmailConfig, LiveKitConfig},
     routes,
     state::AppState,
     swagger,
-    workers::spawn_email_worker,
+    workers::{spawn_email_worker, spawn_meeting_auto_end_worker},
 };
 
 #[tokio::main]
@@ -53,12 +52,22 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Load LiveKit configuration
+    let livekit_config = LiveKitConfig::from_env()
+        .expect("Failed to load LiveKit configuration. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.");
+    tracing::info!("✅ LiveKit configuration loaded ({})", livekit_config.url);
+
     // Create application state
-    let state = AppState::new(db.clone(), app_config.jwt_secret.clone(), &email_config);
+    let state = AppState::new(
+        db.clone(),
+        app_config.jwt_secret.clone(),
+        &email_config,
+        &livekit_config,
+    );
 
     // Start email worker (only if SMTP is configured)
     let _email_worker = if !email_config.smtp_host.is_empty() {
-        match spawn_email_worker(db, &email_config) {
+        match spawn_email_worker(db.clone(), &email_config) {
             Some(handle) => {
                 tracing::info!("✅ Email worker started");
                 Some(handle)
@@ -72,6 +81,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("ℹ️ Email worker not started (SMTP not configured)");
         None
     };
+
+    // Start meeting auto-end worker (always runs)
+    let _meeting_auto_end_worker = spawn_meeting_auto_end_worker(db.clone());
+    tracing::info!("✅ Meeting auto-end worker started");
 
     // Configure CORS
     let cors = CorsLayer::new()

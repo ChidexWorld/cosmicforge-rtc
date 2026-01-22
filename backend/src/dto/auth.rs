@@ -1,19 +1,15 @@
-use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
-use uuid::Uuid;
-use utoipa::ToSchema;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
+use utoipa::ToSchema;
+use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 // Username: alphanumeric and underscores only
-static USERNAME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9_]+$").unwrap()
-});
+static USERNAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_]+$").unwrap());
 
 // Verification code: 6 digits only
-static VERIFICATION_CODE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\d{6}$").unwrap()
-});
+static VERIFICATION_CODE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{6}$").unwrap());
 
 // Custom password validation function (Rust regex doesn't support lookahead)
 fn validate_password_strength(password: &str) -> bool {
@@ -21,7 +17,7 @@ fn validate_password_strength(password: &str) -> bool {
     let has_uppercase = password.chars().any(|c| c.is_uppercase());
     let has_digit = password.chars().any(|c| c.is_numeric());
     let has_special = password.chars().any(|c| "!@#$%^&*(),.?:{}|<>".contains(c));
-    
+
     has_lowercase && has_uppercase && has_digit && has_special
 }
 
@@ -37,7 +33,11 @@ pub struct RegisterRequest {
     #[validate(email(message = "Invalid email address"))]
     pub email: String,
 
-    #[validate(length(min = 8, max = 128, message = "Password must be between 8 and 128 characters"))]
+    #[validate(length(
+        min = 8,
+        max = 128,
+        message = "Password must be between 8 and 128 characters"
+    ))]
     pub password: String,
 
     #[validate(length(min = 1, message = "Confirm password is required"))]
@@ -49,12 +49,12 @@ fn validate_register_passwords(req: &RegisterRequest) -> Result<(), ValidationEr
         return Err(ValidationError::new("passwords_mismatch")
             .with_message("Passwords do not match".into()));
     }
-    
+
     if !validate_password_strength(&req.password) {
         return Err(ValidationError::new("password_strength")
             .with_message("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character (!@#$%^&*(),.?:{}|<>)".into()));
     }
-    
+
     Ok(())
 }
 
@@ -127,7 +127,11 @@ pub struct ResetPasswordRequest {
     #[validate(length(min = 1, message = "Reset token is required"))]
     pub token: String,
 
-    #[validate(length(min = 8, max = 128, message = "Password must be between 8 and 128 characters"))]
+    #[validate(length(
+        min = 8,
+        max = 128,
+        message = "Password must be between 8 and 128 characters"
+    ))]
     pub new_password: String,
 
     #[validate(length(min = 1, message = "Confirm password is required"))]
@@ -139,11 +143,11 @@ fn validate_reset_passwords(req: &ResetPasswordRequest) -> Result<(), Validation
         return Err(ValidationError::new("passwords_mismatch")
             .with_message("Passwords do not match".into()));
     }
-    
+
     if !validate_password_strength(&req.new_password) {
         return Err(ValidationError::new("password_strength")
             .with_message("Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character (!@#$%^&*(),.?:{}|<>)".into()));
     }
-    
+
     Ok(())
 }

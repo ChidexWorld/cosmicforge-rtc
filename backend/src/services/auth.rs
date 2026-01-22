@@ -1,15 +1,15 @@
+use crate::error::{ApiError, ApiResult};
+use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use chrono::{Duration, Utc};
 use uuid::Uuid;
-use crate::error::{ApiError, ApiResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,        // User ID
-    pub role: String,       // User role
-    pub exp: i64,           // Expiration time
-    pub iat: i64,           // Issued at
+    pub sub: String,  // User ID
+    pub role: String, // User role
+    pub exp: i64,     // Expiration time
+    pub iat: i64,     // Issued at
 }
 
 pub struct JwtService {
@@ -23,32 +23,19 @@ impl JwtService {
         Self {
             secret,
             access_token_expiry: Duration::minutes(15), // 15 minutes
-            refresh_token_expiry: Duration::days(7),     // 7 days
+            refresh_token_expiry: Duration::days(7),    // 7 days
         }
     }
 
-    pub fn generate_access_token(
-        &self,
-        user_id: Uuid,
-        role: &str,
-    ) -> ApiResult<String> {
+    pub fn generate_access_token(&self, user_id: Uuid, role: &str) -> ApiResult<String> {
         self.generate_token(user_id, role, self.access_token_expiry)
     }
 
-    pub fn generate_refresh_token(
-        &self,
-        user_id: Uuid,
-        role: &str,
-    ) -> ApiResult<String> {
+    pub fn generate_refresh_token(&self, user_id: Uuid, role: &str) -> ApiResult<String> {
         self.generate_token(user_id, role, self.refresh_token_expiry)
     }
 
-    fn generate_token(
-        &self,
-        user_id: Uuid,
-        role: &str,
-        expiry: Duration,
-    ) -> ApiResult<String> {
+    fn generate_token(&self, user_id: Uuid, role: &str, expiry: Duration) -> ApiResult<String> {
         let now = Utc::now();
         let exp = (now + expiry).timestamp();
 

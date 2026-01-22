@@ -13,14 +13,14 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(
-                "CREATE TYPE participant_role AS ENUM ('host', 'participant', 'viewer');"
+                "CREATE TYPE participant_role AS ENUM ('host', 'participant', 'viewer');",
             )
             .await?;
 
         manager
             .get_connection()
             .execute_unprepared(
-                "CREATE TYPE participant_status AS ENUM ('waiting', 'joined', 'kicked');"
+                "CREATE TYPE participant_status AS ENUM ('waiting', 'joined', 'kicked');",
             )
             .await?;
 

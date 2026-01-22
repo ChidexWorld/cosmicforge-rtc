@@ -18,9 +18,7 @@ impl MigrationTrait for Migration {
 
         manager
             .get_connection()
-            .execute_unprepared(
-                "CREATE TYPE webhook_status AS ENUM ('active', 'inactive');"
-            )
+            .execute_unprepared("CREATE TYPE webhook_status AS ENUM ('active', 'inactive');")
             .await?;
 
         manager

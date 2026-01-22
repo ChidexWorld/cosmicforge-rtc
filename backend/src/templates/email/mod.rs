@@ -1,13 +1,13 @@
 mod base;
-mod verification;
-mod password_reset;
-mod welcome;
 mod notification;
+mod password_reset;
+mod verification;
+mod welcome;
 
-pub use verification::verification_email;
-pub use password_reset::password_reset_email;
-pub use welcome::welcome_email;
 pub use notification::notification_email;
+pub use password_reset::password_reset_email;
+pub use verification::verification_email;
+pub use welcome::welcome_email;
 
 /// Email template output containing HTML and plain text versions
 pub struct EmailTemplate {

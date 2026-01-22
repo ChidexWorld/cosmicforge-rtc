@@ -1,10 +1,13 @@
+use crate::{
+    error::{ApiError, ApiResult},
+    state::AppState,
+};
 use axum::{
     extract::{Request, State},
     http::header::AUTHORIZATION,
     middleware::Next,
     response::Response,
 };
-use crate::{error::{ApiError, ApiResult}, state::AppState};
 
 pub async fn auth_middleware(
     State(state): State<AppState>,
@@ -22,9 +25,9 @@ pub async fn auth_middleware(
         .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
 
     let claims = state.jwt_service.verify_token(token)?;
-    
+
     // Add claims to request extensions for use in handlers
     request.extensions_mut().insert(claims);
-    
+
     Ok(next.run(request).await)
 }

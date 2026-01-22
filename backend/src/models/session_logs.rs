@@ -31,6 +31,8 @@ pub enum EventType {
     ScreenShareStart,
     #[sea_orm(string_value = "screen_share_end")]
     ScreenShareEnd,
+    #[sea_orm(string_value = "media_toggle")]
+    MediaToggle,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

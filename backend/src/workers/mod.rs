@@ -6,6 +6,7 @@
 //! ## Available Workers
 //!
 //! - `email` - Processes queued email jobs
+//! - `meeting_auto_end` - Auto-ends meetings at scheduled end time
 //!
 //! ## Adding a New Worker
 //!
@@ -17,5 +18,9 @@
 //! See `/docs/EMAIL_QUEUE.md` for the email worker example.
 
 pub mod email;
+pub mod meeting_auto_end;
 
 pub use email::{spawn_email_worker, EmailWorker, EmailWorkerHandle};
+pub use meeting_auto_end::{
+    spawn_meeting_auto_end_worker, MeetingAutoEndWorker, MeetingAutoEndWorkerHandle,
+};

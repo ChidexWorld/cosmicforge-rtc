@@ -9,22 +9,18 @@ impl MigrationTrait for Migration {
         // Create ENUM types first
         manager
             .get_connection()
-            .execute_unprepared(
-                "CREATE TYPE auth_type AS ENUM ('local', 'google');"
-            )
+            .execute_unprepared("CREATE TYPE auth_type AS ENUM ('local', 'google');")
+            .await?;
+
+        manager
+            .get_connection()
+            .execute_unprepared("CREATE TYPE user_role AS ENUM ('user', 'admin');")
             .await?;
 
         manager
             .get_connection()
             .execute_unprepared(
-                "CREATE TYPE user_role AS ENUM ('user', 'admin');"
-            )
-            .await?;
-
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "CREATE TYPE user_status AS ENUM ('pending_verification', 'active', 'inactive');"
+                "CREATE TYPE user_status AS ENUM ('pending_verification', 'active', 'inactive');",
             )
             .await?;
 

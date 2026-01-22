@@ -4,7 +4,11 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 pub fn init_logging() -> WorkerGuard {
     // 1. Determine environment
     let env = std::env::var("APP_ENV").unwrap_or_else(|_| "dev".to_string());
-    let log_dir = if env == "prod" { "logs/prod" } else { "target/logs/dev" };
+    let log_dir = if env == "prod" {
+        "logs/prod"
+    } else {
+        "target/logs/dev"
+    };
 
     // 2. Setup File Appender (Daily Rotation)
     let daily_appender = tracing_appender::rolling::daily(log_dir, "backend.log");

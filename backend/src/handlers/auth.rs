@@ -1,21 +1,13 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 use validator::Validate;
 
-
-
 use crate::{
-    services::auth::{generate_verification_code, hash_password, verify_password},
     dto::*,
     error::{ApiError, ApiResult},
-    models::{
-        users::{self, Entity as Users},
-    },
+    models::users::{self, Entity as Users},
+    services::auth::{generate_verification_code, hash_password, verify_password},
     state::AppState,
 };
 
@@ -36,7 +28,8 @@ pub async fn register(
     Json(payload): Json<RegisterRequest>,
 ) -> ApiResult<(StatusCode, Json<RegisterResponse>)> {
     // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     // Check if user already exists
@@ -46,7 +39,9 @@ pub async fn register(
         .await?;
 
     if existing_user.is_some() {
-        return Err(ApiError::Conflict("A user with this email already exists".to_string()));
+        return Err(ApiError::Conflict(
+            "A user with this email already exists".to_string(),
+        ));
     }
 
     // Hash password
@@ -90,7 +85,11 @@ pub async fn register(
             );
         }
         Err(e) => {
-            tracing::error!("Failed to queue verification email for {}: {}", user.email, e);
+            tracing::error!(
+                "Failed to queue verification email for {}: {}",
+                user.email,
+                e
+            );
             // Don't fail registration if email queueing fails - user can request resend
         }
     }
@@ -99,7 +98,9 @@ pub async fn register(
         user_id: user.id,
         email: user.email,
         role: format!("{:?}", user.role).to_lowercase(),
-        status: format!("{:?}", user.status).to_lowercase().replace('_', "_"),
+        status: format!("{:?}", user.status)
+            .to_lowercase()
+            .replace('_', "_"),
     };
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -121,7 +122,8 @@ pub async fn verify_email(
     Json(payload): Json<VerifyEmailRequest>,
 ) -> ApiResult<Json<MessageResponse>> {
     // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     // Find user with verification token
@@ -134,7 +136,9 @@ pub async fn verify_email(
     // Check if token is expired
     if let Some(expires_at) = user.token_expires_at {
         if expires_at < chrono::Utc::now().naive_utc() {
-            return Err(ApiError::BadRequest("Verification token has expired".to_string()));
+            return Err(ApiError::BadRequest(
+                "Verification token has expired".to_string(),
+            ));
         }
     }
 
@@ -144,7 +148,7 @@ pub async fn verify_email(
     user.verification_token = Set(None);
     user.token_expires_at = Set(None);
     user.updated_at = Set(chrono::Utc::now().naive_utc());
-    
+
     user.update(&state.db).await?;
 
     Ok(Json(MessageResponse {
@@ -169,7 +173,8 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> ApiResult<Json<LoginResponse>> {
     // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     // Find user by email
@@ -180,18 +185,23 @@ pub async fn login(
         .ok_or_else(|| ApiError::Unauthorized("Invalid email or password".to_string()))?;
 
     // Verify password
-    let password_hash = user.password_hash
+    let password_hash = user
+        .password_hash
         .as_ref()
         .ok_or_else(|| ApiError::Unauthorized("Invalid email or password".to_string()))?;
 
     let is_valid = verify_password(&payload.password, password_hash)?;
     if !is_valid {
-        return Err(ApiError::Unauthorized("Invalid email or password".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Invalid email or password".to_string(),
+        ));
     }
 
     // Check if user is verified
     if user.status == users::UserStatus::PendingVerification {
-        return Err(ApiError::Forbidden("Please verify your email before logging in".to_string()));
+        return Err(ApiError::Forbidden(
+            "Please verify your email before logging in".to_string(),
+        ));
     }
 
     // Check if user is active
@@ -201,14 +211,12 @@ pub async fn login(
 
     // Generate tokens
     let role_str = format!("{:?}", user.role).to_lowercase();
-    let access_token = state.jwt_service.generate_access_token(
-        user.id,
-        &role_str,
-    )?;
-    let refresh_token = state.jwt_service.generate_refresh_token(
-        user.id,
-        &role_str,
-    )?;
+    let access_token = state
+        .jwt_service
+        .generate_access_token(user.id, &role_str)?;
+    let refresh_token = state
+        .jwt_service
+        .generate_refresh_token(user.id, &role_str)?;
 
     // Update last login
     let mut user_active: users::ActiveModel = user.clone().into();
@@ -244,7 +252,8 @@ pub async fn refresh_token(
     Json(payload): Json<RefreshTokenRequest>,
 ) -> ApiResult<Json<RefreshTokenResponse>> {
     // Validate request
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     // Verify refresh token
@@ -254,14 +263,12 @@ pub async fn refresh_token(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    let access_token = state.jwt_service.generate_access_token(
-        user_id,
-        &claims.role,
-    )?;
-    let refresh_token = state.jwt_service.generate_refresh_token(
-        user_id,
-        &claims.role,
-    )?;
+    let access_token = state
+        .jwt_service
+        .generate_access_token(user_id, &claims.role)?;
+    let refresh_token = state
+        .jwt_service
+        .generate_refresh_token(user_id, &claims.role)?;
 
     Ok(Json(RefreshTokenResponse {
         access_token,
@@ -304,7 +311,9 @@ pub async fn resend_verification_email(
     State(state): State<AppState>,
     Json(payload): Json<ResendVerificationRequest>,
 ) -> ApiResult<Json<MessageResponse>> {
-    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user = Users::find()
         .filter(users::Column::Email.eq(&payload.email))
@@ -355,19 +364,24 @@ pub async fn forgot_password(
     State(state): State<AppState>,
     Json(payload): Json<ForgotPasswordRequest>,
 ) -> ApiResult<Json<MessageResponse>> {
-    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     // Find user
     let user = Users::find()
         .filter(users::Column::Email.eq(&payload.email))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::NotFound("No account found with this email address".to_string()))?;
+        .ok_or_else(|| {
+            ApiError::NotFound("No account found with this email address".to_string())
+        })?;
 
     // Only allow local auth users to reset password
     if user.auth_type != users::AuthType::Local {
         return Err(ApiError::BadRequest(
-            "This account uses Google sign-in. Please use Google to access your account.".to_string()
+            "This account uses Google sign-in. Please use Google to access your account."
+                .to_string(),
         ));
     }
 
@@ -395,7 +409,11 @@ pub async fn forgot_password(
             );
         }
         Err(e) => {
-            tracing::error!("Failed to queue password reset email for {}: {}", user.email, e);
+            tracing::error!(
+                "Failed to queue password reset email for {}: {}",
+                user.email,
+                e
+            );
         }
     }
 
@@ -419,7 +437,9 @@ pub async fn reset_password(
     State(state): State<AppState>,
     Json(payload): Json<ResetPasswordRequest>,
 ) -> ApiResult<Json<MessageResponse>> {
-    payload.validate().map_err(|e| ApiError::ValidationError(e.to_string()))?;
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user = Users::find()
         .filter(users::Column::ResetToken.eq(&payload.token))
@@ -429,7 +449,9 @@ pub async fn reset_password(
 
     // Verify email matches the user
     if user.email != payload.email {
-        return Err(ApiError::BadRequest("Invalid email or reset token".to_string()));
+        return Err(ApiError::BadRequest(
+            "Invalid email or reset token".to_string(),
+        ));
     }
 
     if let Some(expires_at) = user.reset_token_expires_at {
@@ -437,7 +459,7 @@ pub async fn reset_password(
             return Err(ApiError::BadRequest("Reset token has expired".to_string()));
         }
     } else {
-         return Err(ApiError::BadRequest("Invalid reset token".to_string()));
+        return Err(ApiError::BadRequest("Invalid reset token".to_string()));
     }
 
     let password_hash = hash_password(&payload.new_password)?;
@@ -447,7 +469,7 @@ pub async fn reset_password(
     user.reset_token = Set(None);
     user.reset_token_expires_at = Set(None);
     user.updated_at = Set(chrono::Utc::now().naive_utc());
-    
+
     user.update(&state.db).await?;
 
     Ok(Json(MessageResponse {

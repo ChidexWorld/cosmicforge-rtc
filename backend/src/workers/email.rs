@@ -31,7 +31,6 @@ use futures_util::stream::StreamExt; // Provides `for_each_concurrent`
 use crate::config::EmailConfig;
 use crate::models::email_jobs::{self, ActiveModel, EmailJobStatus, Entity as EmailJobs, Model};
 
-
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
@@ -60,10 +59,8 @@ pub struct EmailWorker {
 impl EmailWorker {
     /// Create a new EmailWorker
     pub fn new(db: DatabaseConnection, config: &EmailConfig) -> Result<Self, String> {
-        let credentials = Credentials::new(
-            config.smtp_username.clone(),
-            config.smtp_password.clone(),
-        );
+        let credentials =
+            Credentials::new(config.smtp_username.clone(), config.smtp_password.clone());
 
         // Use STARTTLS for port 587 (Gmail, most providers), or implicit TLS for port 465
         let mailer = if config.smtp_port == 465 {
@@ -126,70 +123,67 @@ impl EmailWorker {
     }
 
     /// Process a batch of pending email jobs
-async fn process_batch(&self) -> Result<(), String> {
-    let now = chrono::Utc::now().naive_utc();
+    async fn process_batch(&self) -> Result<(), String> {
+        let now = chrono::Utc::now().naive_utc();
 
-    // 1️⃣ Fetch jobs (pending or failed & eligible for retry)
-    let jobs = EmailJobs::find()
-        .filter(
-            email_jobs::Column::Status
-                .is_in([EmailJobStatus::Pending, EmailJobStatus::Failed]),
-        )
-        .filter(
-            email_jobs::Column::NextRetryAt
-                .is_null()
-                .or(email_jobs::Column::NextRetryAt.lte(now)),
-        )
-        .order_by_asc(email_jobs::Column::CreatedAt)
-        .limit(BATCH_SIZE)
-        .all(&self.db)
-        .await
-        .map_err(|e| format!("Failed to fetch jobs: {}", e))?;
+        // 1️⃣ Fetch jobs (pending or failed & eligible for retry)
+        let jobs = EmailJobs::find()
+            .filter(
+                email_jobs::Column::Status.is_in([EmailJobStatus::Pending, EmailJobStatus::Failed]),
+            )
+            .filter(
+                email_jobs::Column::NextRetryAt
+                    .is_null()
+                    .or(email_jobs::Column::NextRetryAt.lte(now)),
+            )
+            .order_by_asc(email_jobs::Column::CreatedAt)
+            .limit(BATCH_SIZE)
+            .all(&self.db)
+            .await
+            .map_err(|e| format!("Failed to fetch jobs: {}", e))?;
 
-    if jobs.is_empty() {
-        tracing::debug!("No email jobs to process");
-        return Ok(());
-    }
-
-    tracing::info!("Claiming {} email job(s)", jobs.len());
-
-    // 2️⃣ Mark all jobs as processing safely
-    let mut claimed_jobs = Vec::with_capacity(jobs.len());
-    for job in jobs {
-        let mut active: ActiveModel = job.clone().into();
-        active.status = Set(EmailJobStatus::Processing);
-        active.updated_at = Set(now);
-
-        match active.update(&self.db).await {
-            Ok(updated) => claimed_jobs.push(updated),
-            Err(e) => tracing::error!("Failed to claim job {}: {}", job.id, e),
+        if jobs.is_empty() {
+            tracing::debug!("No email jobs to process");
+            return Ok(());
         }
-    }
 
-    if claimed_jobs.is_empty() {
-        tracing::warn!("No jobs could be claimed for processing");
-        return Ok(());
-    }
+        tracing::info!("Claiming {} email job(s)", jobs.len());
 
-    // 3️⃣ Process emails concurrently (LIMIT 3)
-    tokio_stream::iter(claimed_jobs)
-        .for_each_concurrent(3, |job| {
-            let this = self;
-            async move {
-                this.process_job(job).await;
+        // 2️⃣ Mark all jobs as processing safely
+        let mut claimed_jobs = Vec::with_capacity(jobs.len());
+        for job in jobs {
+            let mut active: ActiveModel = job.clone().into();
+            active.status = Set(EmailJobStatus::Processing);
+            active.updated_at = Set(now);
+
+            match active.update(&self.db).await {
+                Ok(updated) => claimed_jobs.push(updated),
+                Err(e) => tracing::error!("Failed to claim job {}: {}", job.id, e),
             }
-        })
-        .await;
+        }
 
-    Ok(())
-}
+        if claimed_jobs.is_empty() {
+            tracing::warn!("No jobs could be claimed for processing");
+            return Ok(());
+        }
 
-    
+        // 3️⃣ Process emails concurrently (LIMIT 3)
+        tokio_stream::iter(claimed_jobs)
+            .for_each_concurrent(3, |job| {
+                let this = self;
+                async move {
+                    this.process_job(job).await;
+                }
+            })
+            .await;
+
+        Ok(())
+    }
 
     /// Process a single email job
     async fn process_job(&self, job: Model) {
         let job_id = job.id;
-    
+
         match self.send_email(&job).await {
             Ok(()) => {
                 if let Err(e) = self.mark_sent(job_id).await {
@@ -198,7 +192,7 @@ async fn process_batch(&self) -> Result<(), String> {
             }
             Err(e) => {
                 tracing::warn!("Email job {} failed: {}", job_id, e);
-    
+
                 if let Err(e2) = self
                     .handle_failure(job_id, job.retry_count, job.max_retries, &e)
                     .await
@@ -208,7 +202,6 @@ async fn process_batch(&self) -> Result<(), String> {
             }
         }
     }
-    
 
     /// Send email via SMTP
     async fn send_email(&self, job: &Model) -> Result<(), String> {
@@ -240,49 +233,45 @@ async fn process_batch(&self) -> Result<(), String> {
             )
             .map_err(|e| format!("Failed to build email: {}", e))?;
 
-        self.mailer
-            .send(email)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    "SMTP send failed for job {} to {}: {}",
-                    job.id,
-                    job.to_email,
-                    e
-                );
-                format!("SMTP error: {}", e)
-            })?;
+        self.mailer.send(email).await.map_err(|e| {
+            tracing::error!(
+                "SMTP send failed for job {} to {}: {}",
+                job.id,
+                job.to_email,
+                e
+            );
+            format!("SMTP error: {}", e)
+        })?;
 
         tracing::info!("Email sent successfully: {} -> {}", job.id, job.to_email);
         Ok(())
     }
 
-
     /// Mark job as sent
     async fn mark_sent(&self, job_id: Uuid) -> Result<(), String> {
         let now = chrono::Utc::now().naive_utc();
-    
+
         // Load the job first
         let job = EmailJobs::find_by_id(job_id)
             .one(&self.db)
             .await
             .map_err(|e| format!("DB error fetching job {}: {}", job_id, e))?
             .ok_or_else(|| format!("Job {} not found", job_id))?;
-    
+
         let mut active: ActiveModel = job.into();
         active.status = Set(EmailJobStatus::Sent);
         active.sent_at = Set(Some(now));
         active.updated_at = Set(now);
-    
+
         active
             .update(&self.db)
             .await
             .map_err(|e| format!("DB error updating job {}: {}", job_id, e))?;
-    
+
         tracing::info!("Email job {} marked as sent", job_id);
         Ok(())
     }
-    
+
     /// Handle send failure with retry logic
     async fn handle_failure(
         &self,
@@ -293,19 +282,19 @@ async fn process_batch(&self) -> Result<(), String> {
     ) -> Result<(), String> {
         let now = chrono::Utc::now().naive_utc();
         let new_retry_count = current_retry + 1;
-    
+
         // Load the job
         let job = EmailJobs::find_by_id(job_id)
             .one(&self.db)
             .await
             .map_err(|e| format!("DB error fetching job {}: {}", job_id, e))?
             .ok_or_else(|| format!("Job {} not found", job_id))?;
-    
+
         let mut active: ActiveModel = job.into();
         active.retry_count = Set(new_retry_count);
         active.last_error = Set(Some(error.to_string()));
         active.updated_at = Set(now);
-    
+
         if new_retry_count >= max_retries {
             // Move to dead-letter queue
             active.status = Set(EmailJobStatus::DeadLetter);
@@ -313,7 +302,7 @@ async fn process_batch(&self) -> Result<(), String> {
                 .update(&self.db)
                 .await
                 .map_err(|e| format!("DB error updating job {}: {}", job_id, e))?;
-    
+
             tracing::warn!(
                 "Email job {} moved to dead letter after {} retries",
                 job_id,
@@ -323,15 +312,15 @@ async fn process_batch(&self) -> Result<(), String> {
             // Schedule retry with exponential backoff
             let backoff_secs = BASE_BACKOFF_SECS * (1 << new_retry_count);
             let next_retry = now + chrono::Duration::seconds(backoff_secs);
-    
+
             active.status = Set(EmailJobStatus::Failed);
             active.next_retry_at = Set(Some(next_retry));
-    
+
             active
                 .update(&self.db)
                 .await
                 .map_err(|e| format!("DB error updating job {}: {}", job_id, e))?;
-    
+
             tracing::info!(
                 "Email job {} retry {} scheduled for {:?}",
                 job_id,
@@ -339,10 +328,9 @@ async fn process_batch(&self) -> Result<(), String> {
                 next_retry
             );
         }
-    
+
         Ok(())
     }
-    
 }
 
 // ============================================================================

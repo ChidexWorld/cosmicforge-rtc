@@ -11,9 +11,7 @@ impl MigrationTrait for Migration {
         // Create ENUM type first
         manager
             .get_connection()
-            .execute_unprepared(
-                "CREATE TYPE api_key_status AS ENUM ('active', 'revoked');"
-            )
+            .execute_unprepared("CREATE TYPE api_key_status AS ENUM ('active', 'revoked');")
             .await?;
 
         manager

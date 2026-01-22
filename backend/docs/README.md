@@ -73,6 +73,20 @@ This directory contains documentation for the CosmicForge RTC backend.
 
 ---
 
+### [LIVEKIT.md](./LIVEKIT.md)
+
+**LiveKit Integration Guide**
+
+- Architecture overview (control plane vs data plane)
+- Token generation and lifecycle
+- Client SDK integration examples
+- Security considerations
+- Troubleshooting guide
+
+**Use this when**: You need to understand how LiveKit handles real-time video/audio, integrate client SDKs, or debug connection issues.
+
+---
+
 ## Database Tables
 
 The schema includes 9 tables:
@@ -95,13 +109,14 @@ The schema includes 9 tables:
 - **Type-Safe Models** - SeaORM entities with Rust enums
 - **Email Queue** - Async email delivery with retry and dead-letter queue
 - **API Management** - Usage tracking and rate limiting
+- **LiveKit Integration** - Real-time video/audio via WebRTC SFU
 
 ## Project Structure
 
 ```
 backend/
 ├── src/
-│   ├── config/         # App and email configuration
+│   ├── config/         # App, email, and LiveKit configuration
 │   ├── dto/            # Request/Response DTOs
 │   ├── handlers/       # Request handlers (controllers)
 │   ├── middleware/     # Auth middleware
@@ -130,7 +145,8 @@ backend/
 2. Read **DATABASE_SCHEMA.md** for schema details
 3. Check **SWAGGER_GUIDE.md** for API documentation
 4. See **EMAIL_QUEUE.md** if working with emails
+5. See **LIVEKIT.md** for real-time video/audio integration
 
 ---
 
-**Last Updated**: 2026-01-17
+**Last Updated**: 2026-01-19
