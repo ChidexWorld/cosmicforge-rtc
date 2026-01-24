@@ -58,12 +58,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("✅ LiveKit configuration loaded ({})", livekit_config.url);
 
     // Create application state
-    let state = AppState::new(
-        db.clone(),
-        app_config.jwt_secret.clone(),
-        &email_config,
-        &livekit_config,
-    );
+    let state = AppState::new(db.clone(), &app_config, &email_config, &livekit_config);
+    tracing::info!("✅ Hosted UI URL: {}", app_config.app_url);
 
     // Start email worker (only if SMTP is configured)
     let _email_worker = if !email_config.smtp_host.is_empty() {

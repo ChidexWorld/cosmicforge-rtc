@@ -15,12 +15,13 @@ use validator::Validate;
 
 use crate::{
     dto::{
-        naive_to_utc, utc_to_naive, ApiResponse, CreateMeetingRequest, EndMeetingResponse,
-        JoinMeetingRequest, JoinMeetingResponse, ListMeetingsQuery, MeetingResponse,
-        PaginatedResponse, PaginationMeta, UpdateMeetingRequest,
+        naive_to_utc, utc_to_naive, ApiKeyClaims, ApiResponse, CreateMeetingRequest,
+        EndMeetingResponse, JoinMeetingRequest, JoinMeetingResponse, ListMeetingsQuery,
+        MeetingResponse, PaginatedResponse, PaginationMeta, UpdateMeetingRequest,
     },
     error::{ApiError, ApiResult},
     models::{
+        chat_messages::{self, Entity as ChatMessages},
         meetings::{self, Entity as Meetings, MeetingStatus},
         participants::{self, Entity as Participants, ParticipantRole, ParticipantStatus},
         session_logs::{self, EventType},
@@ -89,18 +90,22 @@ pub async fn list_meetings(
 
     let data: Vec<MeetingResponse> = meetings_list
         .into_iter()
-        .map(|m| MeetingResponse {
-            id: m.id,
-            meeting_identifier: m.meeting_identifier,
-            host_id: m.host_id,
-            title: m.title,
-            metadata: m.metadata,
-            is_private: m.is_private,
-            start_time: naive_to_utc(m.start_time),
-            end_time: m.end_time.map(naive_to_utc),
-            status: format_status(&m.status),
-            created_at: naive_to_utc(m.created_at),
-            updated_at: naive_to_utc(m.updated_at),
+        .map(|m| {
+            let join_url = state.join_url(&m.meeting_identifier);
+            MeetingResponse {
+                id: m.id,
+                meeting_identifier: m.meeting_identifier,
+                host_id: m.host_id,
+                title: m.title,
+                metadata: m.metadata,
+                is_private: m.is_private,
+                start_time: naive_to_utc(m.start_time),
+                end_time: m.end_time.map(naive_to_utc),
+                status: format_status(&m.status),
+                join_url,
+                created_at: naive_to_utc(m.created_at),
+                updated_at: naive_to_utc(m.updated_at),
+            }
         })
         .collect();
 
@@ -200,7 +205,7 @@ pub async fn create_meeting(
 
     let response = MeetingResponse {
         id: meeting.id,
-        meeting_identifier: meeting.meeting_identifier,
+        meeting_identifier: meeting.meeting_identifier.clone(),
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
@@ -208,6 +213,7 @@ pub async fn create_meeting(
         start_time: naive_to_utc(meeting.start_time),
         end_time: meeting.end_time.map(naive_to_utc),
         status: format_status(&meeting.status),
+        join_url: state.join_url(&meeting.meeting_identifier),
         created_at: naive_to_utc(meeting.created_at),
         updated_at: naive_to_utc(meeting.updated_at),
     };
@@ -254,7 +260,7 @@ pub async fn get_meeting(
 
     let response = MeetingResponse {
         id: meeting.id,
-        meeting_identifier: meeting.meeting_identifier,
+        meeting_identifier: meeting.meeting_identifier.clone(),
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
@@ -262,6 +268,7 @@ pub async fn get_meeting(
         start_time: naive_to_utc(meeting.start_time),
         end_time: meeting.end_time.map(naive_to_utc),
         status: format_status(&meeting.status),
+        join_url: state.join_url(&meeting.meeting_identifier),
         created_at: naive_to_utc(meeting.created_at),
         updated_at: naive_to_utc(meeting.updated_at),
     };
@@ -391,7 +398,7 @@ pub async fn update_meeting(
 
     let response = MeetingResponse {
         id: meeting.id,
-        meeting_identifier: meeting.meeting_identifier,
+        meeting_identifier: meeting.meeting_identifier.clone(),
         host_id: meeting.host_id,
         title: meeting.title,
         metadata: meeting.metadata,
@@ -399,6 +406,7 @@ pub async fn update_meeting(
         start_time: naive_to_utc(meeting.start_time),
         end_time: meeting.end_time.map(naive_to_utc),
         status: format_status(&meeting.status),
+        join_url: state.join_url(&meeting.meeting_identifier),
         created_at: naive_to_utc(meeting.created_at),
         updated_at: naive_to_utc(meeting.updated_at),
     };
@@ -753,6 +761,12 @@ pub async fn end_meeting(
         participant.update(&state.db).await?;
     }
 
+    // Clear chat messages (volatile per session)
+    ChatMessages::delete_many()
+        .filter(chat_messages::Column::MeetingId.eq(id))
+        .exec(&state.db)
+        .await?;
+
     // Log the meeting end event
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -818,4 +832,245 @@ pub async fn join_meeting_by_identifier(
 
     // Use shared join logic
     join_meeting_internal(state, meeting, payload).await
+}
+
+// ============================================================================
+// PUBLIC MEETING INFO ENDPOINT
+// ============================================================================
+
+use crate::dto::{PublicMeetingInfoApiResponse, PublicMeetingInfoResponse};
+
+/// Get public meeting info by meeting identifier
+///
+/// This endpoint allows the hosted UI to fetch meeting details before joining.
+/// No authentication required. Only returns public information.
+#[utoipa::path(
+    get,
+    path = "/api/v1/meetings/public/{meeting_identifier}",
+    tag = "Meetings",
+    params(
+        ("meeting_identifier" = String, Path, description = "Meeting identifier (8-character code, e.g., ABCD1234)")
+    ),
+    responses(
+        (status = 200, description = "Public meeting info", body = PublicMeetingInfoApiResponse),
+        (status = 404, description = "Meeting not found")
+    )
+)]
+pub async fn get_public_meeting_info(
+    State(state): State<AppState>,
+    Path(meeting_identifier): Path<String>,
+) -> ApiResult<Json<PublicMeetingInfoApiResponse>> {
+    // Find meeting by identifier
+    let meeting = Meetings::find()
+        .filter(meetings::Column::MeetingIdentifier.eq(&meeting_identifier))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| {
+            ApiError::NotFound(format!(
+                "Meeting with code '{}' not found",
+                meeting_identifier
+            ))
+        })?;
+
+    let response = PublicMeetingInfoResponse {
+        meeting_identifier: meeting.meeting_identifier.clone(),
+        title: meeting.title,
+        is_private: meeting.is_private,
+        start_time: naive_to_utc(meeting.start_time),
+        end_time: meeting.end_time.map(naive_to_utc),
+        status: format_status(&meeting.status),
+        join_url: state.join_url(&meeting.meeting_identifier),
+    };
+
+    Ok(Json(PublicMeetingInfoApiResponse {
+        success: true,
+        data: response,
+    }))
+}
+
+// ============================================================================
+// API KEY AUTHENTICATED ENDPOINTS
+// ============================================================================
+
+/// Request to create a meeting via API key
+#[derive(Debug, serde::Deserialize, Validate, utoipa::ToSchema)]
+pub struct ApiCreateMeetingRequest {
+    #[validate(length(
+        min = 1,
+        max = 200,
+        message = "Title must be between 1 and 200 characters"
+    ))]
+    pub title: String,
+
+    pub start_time: chrono::DateTime<chrono::Utc>,
+
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+
+    #[serde(default)]
+    pub is_private: Option<bool>,
+
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Request to join a meeting via API key
+#[derive(Debug, serde::Deserialize, Validate, utoipa::ToSchema)]
+pub struct ApiJoinMeetingRequest {
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Display name must be between 1 and 100 characters"
+    ))]
+    pub display_name: String,
+}
+
+/// Create a new meeting via API key
+///
+/// Third-party integrations can use this endpoint with Api-Key authentication
+/// to create meetings on behalf of the key owner.
+#[utoipa::path(
+    post,
+    path = "/api/v1/api/meetings",
+    tag = "API Keys",
+    request_body = ApiCreateMeetingRequest,
+    responses(
+        (status = 201, description = "Meeting created successfully", body = MeetingApiResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized - Invalid or missing Api-Key"),
+        (status = 403, description = "Forbidden - API key usage limit exceeded")
+    ),
+    security(
+        ("api_key_auth" = [])
+    )
+)]
+pub async fn api_create_meeting(
+    State(state): State<AppState>,
+    Extension(api_claims): Extension<ApiKeyClaims>,
+    Json(payload): Json<ApiCreateMeetingRequest>,
+) -> ApiResult<(StatusCode, Json<ApiResponse<MeetingResponse>>)> {
+    // Validate request
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    let user_id = api_claims.user_id;
+    let now = chrono::Utc::now();
+
+    // Validate start time is in the future (at least 1 minute from now)
+    if payload.start_time <= now + chrono::Duration::minutes(1) {
+        return Err(ApiError::ValidationError(
+            "Start time must be at least 1 minute in the future".to_string(),
+        ));
+    }
+
+    // Validate time range
+    if let Some(end_time) = payload.end_time {
+        if end_time <= payload.start_time {
+            return Err(ApiError::ValidationError(
+                "End time must be after start time".to_string(),
+            ));
+        }
+
+        // Validate meeting duration is reasonable (max 24 hours)
+        let duration = end_time - payload.start_time;
+        if duration > chrono::Duration::hours(24) {
+            return Err(ApiError::ValidationError(
+                "Meeting duration cannot exceed 24 hours".to_string(),
+            ));
+        }
+    }
+
+    // Generate meeting identifier (human-friendly code)
+    let meeting_identifier = generate_meeting_identifier();
+    let meeting_id = Uuid::new_v4();
+    let now_naive = utc_to_naive(chrono::Utc::now());
+
+    // Create meeting with status = scheduled
+    let meeting = meetings::ActiveModel {
+        id: Set(meeting_id),
+        meeting_identifier: Set(meeting_identifier),
+        user_id: Set(Some(user_id)),
+        host_id: Set(user_id),
+        title: Set(payload.title),
+        metadata: Set(payload.metadata),
+        is_private: Set(payload.is_private.unwrap_or(false)),
+        start_time: Set(utc_to_naive(payload.start_time)),
+        end_time: Set(payload.end_time.map(utc_to_naive)),
+        status: Set(MeetingStatus::Scheduled),
+        created_at: Set(now_naive),
+        updated_at: Set(now_naive),
+    };
+
+    let meeting = meeting.insert(&state.db).await?;
+
+    let response = MeetingResponse {
+        id: meeting.id,
+        meeting_identifier: meeting.meeting_identifier.clone(),
+        host_id: meeting.host_id,
+        title: meeting.title,
+        metadata: meeting.metadata,
+        is_private: meeting.is_private,
+        start_time: naive_to_utc(meeting.start_time),
+        end_time: meeting.end_time.map(naive_to_utc),
+        status: format_status(&meeting.status),
+        join_url: state.join_url(&meeting.meeting_identifier),
+        created_at: naive_to_utc(meeting.created_at),
+        updated_at: naive_to_utc(meeting.updated_at),
+    };
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiResponse {
+            success: true,
+            data: response,
+        }),
+    ))
+}
+
+/// Join a meeting via API key
+///
+/// Third-party integrations can use this endpoint with Api-Key authentication
+/// to join meetings. The user associated with the API key is used for authentication.
+#[utoipa::path(
+    post,
+    path = "/api/v1/api/meetings/{id}/join",
+    tag = "API Keys",
+    params(
+        ("id" = Uuid, Path, description = "Meeting UUID")
+    ),
+    request_body = ApiJoinMeetingRequest,
+    responses(
+        (status = 200, description = "Successfully joined meeting", body = JoinMeetingApiResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized - Invalid or missing Api-Key"),
+        (status = 403, description = "Forbidden - API key usage limit exceeded or private meeting"),
+        (status = 404, description = "Meeting not found"),
+        (status = 409, description = "Meeting has ended, cancelled, too early to join, or past scheduled end time")
+    ),
+    security(
+        ("api_key_auth" = [])
+    )
+)]
+pub async fn api_join_meeting(
+    State(state): State<AppState>,
+    Extension(api_claims): Extension<ApiKeyClaims>,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<ApiJoinMeetingRequest>,
+) -> ApiResult<Json<ApiResponse<JoinMeetingResponse>>> {
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    // Find meeting
+    let meeting = Meetings::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
+
+    // Use shared join logic with API key user
+    let join_request = JoinMeetingRequest {
+        user_id: Some(api_claims.user_id),
+        display_name: payload.display_name,
+    };
+
+    join_meeting_internal(state, meeting, join_request).await
 }

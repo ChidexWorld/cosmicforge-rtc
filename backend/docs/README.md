@@ -87,6 +87,49 @@ This directory contains documentation for the CosmicForge RTC backend.
 
 ---
 
+### [MEETINGS.md](./MEETINGS.md)
+
+**Meeting Lifecycle Management**
+
+- Meeting creation, update, and deletion
+- Join meeting by UUID or meeting code
+- Time-based validation (early/late join prevention)
+- Auto-end worker for scheduled meetings
+- Session logging and audit trail
+
+**Use this when**: You need to implement meeting features or understand the meeting lifecycle.
+
+---
+
+### [PARTICIPANTS.md](./PARTICIPANTS.md)
+
+**Participant Management**
+
+- Listing and kicking participants
+- Waiting room management (admit/deny)
+- Media control (audio, video, screen sharing)
+- Participant roles and permissions
+- Status transitions
+
+**Use this when**: You need to implement participant management or media control features.
+
+---
+
+### [CHAT.md](./CHAT.md)
+
+**In-Meeting Chat System**
+
+- Hybrid real-time architecture (LiveKit + REST API)
+- Complete frontend implementation guide with code examples
+- LiveKit data channels for instant delivery
+- REST API for persistence and late joiner history
+- React hook examples
+- Volatile messages (deleted when meeting ends)
+
+**Use this when**: You need to implement the chat feature in your frontend application.
+
+---
+
 ## Database Tables
 
 The schema includes 9 tables:
@@ -144,9 +187,12 @@ backend/
 1. Start with **QUICK_START.md** to get the project running
 2. Read **DATABASE_SCHEMA.md** for schema details
 3. Check **SWAGGER_GUIDE.md** for API documentation
-4. See **EMAIL_QUEUE.md** if working with emails
-5. See **LIVEKIT.md** for real-time video/audio integration
+4. See **LIVEKIT.md** for real-time video/audio integration
+5. See **MEETINGS.md** for meeting lifecycle management
+6. See **PARTICIPANTS.md** for participant management
+7. See **CHAT.md** for implementing the chat feature
+8. See **EMAIL_QUEUE.md** if working with emails
 
 ---
 
-**Last Updated**: 2026-01-19
+**Last Updated**: 2026-01-22

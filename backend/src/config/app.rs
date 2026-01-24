@@ -18,6 +18,9 @@ pub struct AppConfig {
 
     /// Server port
     pub port: u16,
+
+    /// Frontend/Hosted UI URL (e.g., https://meet.cosmicforge.com)
+    pub app_url: String,
 }
 
 impl AppConfig {
@@ -36,11 +39,21 @@ impl AppConfig {
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .map_err(|_| ApiError::InternalError("Invalid PORT".to_string()))?,
+
+            app_url: std::env::var("APP_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+                .trim_end_matches('/')
+                .to_string(),
         })
     }
 
     /// Get the server address (host:port)
     pub fn server_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    /// Generate join URL for a meeting
+    pub fn join_url(&self, meeting_identifier: &str) -> String {
+        format!("{}/join/{}", self.app_url, meeting_identifier)
     }
 }

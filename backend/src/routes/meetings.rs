@@ -1,5 +1,5 @@
 use crate::{
-    handlers::{meetings, participants},
+    handlers::{chat, meetings, participants},
     middleware::auth_middleware,
     state::AppState,
 };
@@ -45,6 +45,11 @@ pub fn meeting_routes(state: AppState) -> Router<AppState> {
             "/:id/screen-share/stop",
             post(participants::stop_screen_share),
         )
+        // Chat routes
+        .route(
+            "/:id/chat",
+            get(chat::get_messages).post(chat::send_message),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware,
@@ -54,5 +59,9 @@ pub fn meeting_routes(state: AppState) -> Router<AppState> {
         .route(
             "/join/:meeting_identifier",
             post(meetings::join_meeting_by_identifier),
+        )
+        .route(
+            "/public/:meeting_identifier",
+            get(meetings::get_public_meeting_info),
         )
 }

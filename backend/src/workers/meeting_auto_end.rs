@@ -25,6 +25,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::dto::naive_to_utc;
 use crate::models::{
+    chat_messages::{self, Entity as ChatMessages},
     meetings::{self, Entity as Meetings, MeetingStatus},
     participants::{self, Entity as Participants},
     session_logs::{self, EventType},
@@ -154,6 +155,13 @@ impl MeetingAutoEndWorker {
                 .await
                 .map_err(|e| format!("Failed to update participant: {}", e))?;
         }
+
+        // Clear chat messages (volatile per session)
+        ChatMessages::delete_many()
+            .filter(chat_messages::Column::MeetingId.eq(meeting_id))
+            .exec(&self.db)
+            .await
+            .map_err(|e| format!("Failed to clear chat messages: {}", e))?;
 
         // Log the auto-end event
         let session_log = session_logs::ActiveModel {

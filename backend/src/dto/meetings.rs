@@ -2,7 +2,7 @@
 //!
 //! Data Transfer Objects for meeting-related API endpoints.
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use utoipa::ToSchema;
@@ -80,6 +80,8 @@ pub struct MeetingResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time: Option<DateTime<Utc>>,
     pub status: String,
+    /// Join URL for the hosted UI (e.g., https://meet.cosmicforge.com/join/ABCD1234)
+    pub join_url: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -145,6 +147,32 @@ pub struct JoinMeetingApiResponse {
 pub struct EndMeetingApiResponse {
     pub success: bool,
     pub data: EndMeetingResponse,
+}
+
+// ============================================================================
+// PUBLIC MEETING INFO DTOs
+// ============================================================================
+
+/// Public meeting info response (no authentication required)
+/// Used by the hosted UI to display meeting details before joining
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PublicMeetingInfoResponse {
+    pub meeting_identifier: String,
+    pub title: String,
+    pub is_private: bool,
+    pub start_time: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<DateTime<Utc>>,
+    pub status: String,
+    /// Join URL for the hosted UI
+    pub join_url: String,
+}
+
+/// API response wrapper for public meeting info
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PublicMeetingInfoApiResponse {
+    pub success: bool,
+    pub data: PublicMeetingInfoResponse,
 }
 
 /// Pagination metadata
@@ -254,4 +282,55 @@ pub struct ScreenShareResponse {
     pub participant_id: Uuid,
     pub is_screen_sharing: bool,
     pub message: String,
+}
+
+// ============================================================================
+// CHAT DTOs
+// ============================================================================
+
+/// Request to send a chat message
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct SendChatMessageRequest {
+    /// The participant sending the message
+    pub participant_id: Uuid,
+
+    #[validate(length(
+        min = 1,
+        max = 2000,
+        message = "Message must be between 1 and 2000 characters"
+    ))]
+    pub message: String,
+}
+
+/// Single chat message response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ChatMessageResponse {
+    pub id: Uuid,
+    pub participant_id: Uuid,
+    pub display_name: String,
+    pub message: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Response for sending a chat message
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SendChatMessageApiResponse {
+    pub success: bool,
+    pub data: ChatMessageResponse,
+}
+
+/// Response for listing chat messages
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ChatMessagesListResponse {
+    pub success: bool,
+    pub data: Vec<ChatMessageResponse>,
+}
+
+/// Query parameters for chat messages
+#[derive(Debug, Deserialize)]
+pub struct ChatMessagesQuery {
+    /// Filter messages after this timestamp
+    pub after: Option<DateTime<Utc>>,
+    /// Limit number of messages (default: 100, max: 500)
+    pub limit: Option<u64>,
 }
