@@ -130,21 +130,6 @@ This directory contains documentation for the CosmicForge RTC backend.
 
 ---
 
-### [TIMEZONE.md](./TIMEZONE.md)
-
-**Timezone & DateTime Handling**
-
-- Nigeria Time (WAT, UTC+1) configuration
-- Utility functions for datetime conversion
-- Database storage format
-- API input/output handling
-- Common patterns and examples
-- Migration notes for existing data
-
-**Use this when**: You need to work with dates/times or understand how timestamps are handled.
-
----
-
 ## Database Tables
 
 The schema includes 9 tables:
@@ -168,7 +153,6 @@ The schema includes 9 tables:
 - **Email Queue** - Async email delivery with retry and dead-letter queue
 - **API Management** - Usage tracking and rate limiting
 - **LiveKit Integration** - Real-time video/audio via WebRTC SFU
-- **Nigeria Timezone** - All timestamps use WAT (UTC+1)
 
 ## Project Structure
 
@@ -203,12 +187,11 @@ backend/
 1. Start with **QUICK_START.md** to get the project running
 2. Read **DATABASE_SCHEMA.md** for schema details
 3. Check **SWAGGER_GUIDE.md** for API documentation
-4. See **TIMEZONE.md** for datetime handling (Nigeria Time)
-5. See **LIVEKIT.md** for real-time video/audio integration
-6. See **MEETINGS.md** for meeting lifecycle management
-7. See **PARTICIPANTS.md** for participant management
-8. See **CHAT.md** for implementing the chat feature
-9. See **EMAIL_QUEUE.md** if working with emails
+4. See **LIVEKIT.md** for real-time video/audio integration
+5. See **MEETINGS.md** for meeting lifecycle management
+6. See **PARTICIPANTS.md** for participant management
+7. See **CHAT.md** for implementing the chat feature
+8. See **EMAIL_QUEUE.md** if working with emails
 
 ---
 
