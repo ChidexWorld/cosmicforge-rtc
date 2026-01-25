@@ -30,6 +30,7 @@ use futures_util::stream::StreamExt; // Provides `for_each_concurrent`
 
 use crate::config::EmailConfig;
 use crate::models::email_jobs::{self, ActiveModel, EmailJobStatus, Entity as EmailJobs, Model};
+use crate::utils::now_naive;
 
 // ============================================================================
 // CONFIGURATION
@@ -124,7 +125,7 @@ impl EmailWorker {
 
     /// Process a batch of pending email jobs
     async fn process_batch(&self) -> Result<(), String> {
-        let now = chrono::Utc::now().naive_utc();
+        let now = now_naive();
 
         // 1️⃣ Fetch jobs (pending or failed & eligible for retry)
         let jobs = EmailJobs::find()
@@ -249,7 +250,7 @@ impl EmailWorker {
 
     /// Mark job as sent
     async fn mark_sent(&self, job_id: Uuid) -> Result<(), String> {
-        let now = chrono::Utc::now().naive_utc();
+        let now = now_naive();
 
         // Load the job first
         let job = EmailJobs::find_by_id(job_id)
@@ -280,7 +281,7 @@ impl EmailWorker {
         max_retries: i32,
         error: &str,
     ) -> Result<(), String> {
-        let now = chrono::Utc::now().naive_utc();
+        let now = now_naive();
         let new_retry_count = current_retry + 1;
 
         // Load the job

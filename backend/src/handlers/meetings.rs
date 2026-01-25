@@ -15,7 +15,7 @@ use validator::Validate;
 
 use crate::{
     dto::{
-        naive_to_utc, utc_to_naive, ApiKeyClaims, ApiResponse, CreateMeetingRequest,
+        ApiKeyClaims, ApiResponse, CreateMeetingRequest,
         EndMeetingResponse, JoinMeetingRequest, JoinMeetingResponse, ListMeetingsQuery,
         MeetingResponse, PaginatedResponse, PaginationMeta, UpdateMeetingRequest,
     },
@@ -28,7 +28,7 @@ use crate::{
     },
     services::auth::Claims,
     state::AppState,
-    utils::{format_duration, format_role, format_status, generate_meeting_identifier},
+    utils::{format_duration, format_role, format_status, generate_meeting_identifier, now_naive},
 };
 
 /// List meetings for the authenticated user
@@ -99,12 +99,12 @@ pub async fn list_meetings(
                 title: m.title,
                 metadata: m.metadata,
                 is_private: m.is_private,
-                start_time: naive_to_utc(m.start_time),
-                end_time: m.end_time.map(naive_to_utc),
+                start_time: m.start_time,
+                end_time: m.end_time,
                 status: format_status(&m.status),
                 join_url,
-                created_at: naive_to_utc(m.created_at),
-                updated_at: naive_to_utc(m.updated_at),
+                created_at: m.created_at,
+                updated_at: m.updated_at,
             }
         })
         .collect();
@@ -154,7 +154,7 @@ pub async fn create_meeting(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    let now = chrono::Utc::now();
+    let now = now_naive();
 
     // Validate start time is in the future (at least 1 minute from now)
     if payload.start_time <= now + chrono::Duration::minutes(1) {
@@ -183,9 +183,9 @@ pub async fn create_meeting(
     // Generate meeting identifier (human-friendly code)
     let meeting_identifier = generate_meeting_identifier();
     let meeting_id = Uuid::new_v4();
-    let now = utc_to_naive(chrono::Utc::now());
 
     // Create meeting with status = scheduled
+    // Input times are already in Nigeria time, store directly
     let meeting = meetings::ActiveModel {
         id: Set(meeting_id),
         meeting_identifier: Set(meeting_identifier),
@@ -194,8 +194,8 @@ pub async fn create_meeting(
         title: Set(payload.title),
         metadata: Set(payload.metadata),
         is_private: Set(payload.is_private.unwrap_or(false)),
-        start_time: Set(utc_to_naive(payload.start_time)),
-        end_time: Set(payload.end_time.map(utc_to_naive)),
+        start_time: Set(payload.start_time),
+        end_time: Set(payload.end_time),
         status: Set(MeetingStatus::Scheduled),
         created_at: Set(now),
         updated_at: Set(now),
@@ -210,12 +210,12 @@ pub async fn create_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: naive_to_utc(meeting.start_time),
-        end_time: meeting.end_time.map(naive_to_utc),
+        start_time: meeting.start_time,
+        end_time: meeting.end_time,
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: naive_to_utc(meeting.created_at),
-        updated_at: naive_to_utc(meeting.updated_at),
+        created_at: meeting.created_at,
+        updated_at: meeting.updated_at,
     };
 
     Ok((
@@ -265,12 +265,12 @@ pub async fn get_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: naive_to_utc(meeting.start_time),
-        end_time: meeting.end_time.map(naive_to_utc),
+        start_time: meeting.start_time,
+        end_time: meeting.end_time,
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: naive_to_utc(meeting.created_at),
-        updated_at: naive_to_utc(meeting.updated_at),
+        created_at: meeting.created_at,
+        updated_at: meeting.updated_at,
     };
 
     Ok(Json(ApiResponse {
@@ -340,15 +340,15 @@ pub async fn update_meeting(
         ));
     }
 
-    let now = chrono::Utc::now();
+    let now = now_naive();
 
-    // Determine final start_time and end_time after update
+    // Determine final start_time and end_time after update (all in Nigeria time)
     let final_start_time = payload
         .start_time
-        .unwrap_or_else(|| naive_to_utc(meeting.start_time));
+        .unwrap_or(meeting.start_time);
     let final_end_time = payload
         .end_time
-        .or_else(|| meeting.end_time.map(naive_to_utc));
+        .or(meeting.end_time);
 
     // Validate start time is in the future (allow updates up to current time for ongoing meetings)
     if meeting.status == MeetingStatus::Scheduled && final_start_time <= now {
@@ -374,7 +374,7 @@ pub async fn update_meeting(
         }
     }
 
-    // Update meeting
+    // Update meeting (input times are already in Nigeria time)
     let mut meeting: meetings::ActiveModel = meeting.into();
 
     if let Some(title) = payload.title {
@@ -384,15 +384,15 @@ pub async fn update_meeting(
         meeting.is_private = Set(is_private);
     }
     if let Some(start_time) = payload.start_time {
-        meeting.start_time = Set(utc_to_naive(start_time));
+        meeting.start_time = Set(start_time);
     }
     if let Some(end_time) = payload.end_time {
-        meeting.end_time = Set(Some(utc_to_naive(end_time)));
+        meeting.end_time = Set(Some(end_time));
     }
     if let Some(metadata) = payload.metadata {
         meeting.metadata = Set(Some(metadata));
     }
-    meeting.updated_at = Set(utc_to_naive(chrono::Utc::now()));
+    meeting.updated_at = Set(now);
 
     let meeting = meeting.update(&state.db).await?;
 
@@ -403,12 +403,12 @@ pub async fn update_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: naive_to_utc(meeting.start_time),
-        end_time: meeting.end_time.map(naive_to_utc),
+        start_time: meeting.start_time,
+        end_time: meeting.end_time,
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: naive_to_utc(meeting.created_at),
-        updated_at: naive_to_utc(meeting.updated_at),
+        created_at: meeting.created_at,
+        updated_at: meeting.updated_at,
     };
 
     Ok(Json(ApiResponse {
@@ -530,8 +530,8 @@ async fn join_meeting_internal(
         return Err(ApiError::Conflict("Meeting has been cancelled".to_string()));
     }
 
-    let now = chrono::Utc::now();
-    let start_time = naive_to_utc(meeting.start_time);
+    let now = now_naive();
+    let start_time = meeting.start_time;
 
     // Time-based validation for scheduled meetings
     if meeting.status == MeetingStatus::Scheduled {
@@ -550,8 +550,7 @@ async fn join_meeting_internal(
 
     // Check if meeting has passed its scheduled end time
     if let Some(end_time) = meeting.end_time {
-        let scheduled_end = naive_to_utc(end_time);
-        if now > scheduled_end {
+        if now > end_time {
             // Meeting should have ended - prevent new joins
             return Err(ApiError::Conflict(
                 "This meeting has passed its scheduled end time and is no longer accepting participants.".to_string()
@@ -592,7 +591,7 @@ async fn join_meeting_internal(
 
     // Create participant record
     let participant_id = Uuid::new_v4();
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
 
     // Determine initial status: waiting room for private meetings (except host)
     let initial_status = if meeting.is_private && !is_host {
@@ -739,7 +738,7 @@ pub async fn end_meeting(
         return Err(ApiError::Conflict("Meeting has already ended".to_string()));
     }
 
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
 
     // Update meeting status to ended
     let mut meeting_update: meetings::ActiveModel = meeting.into();
@@ -776,7 +775,7 @@ pub async fn end_meeting(
         event_time: Set(now),
         metadata: Set(Some(serde_json::json!({
             "ended_by_host": user_id.to_string(),
-            "ended_at": naive_to_utc(now).to_rfc3339()
+            "ended_at": now.to_string()
         }))),
     };
     session_log.insert(&state.db).await?;
@@ -876,8 +875,8 @@ pub async fn get_public_meeting_info(
         meeting_identifier: meeting.meeting_identifier.clone(),
         title: meeting.title,
         is_private: meeting.is_private,
-        start_time: naive_to_utc(meeting.start_time),
-        end_time: meeting.end_time.map(naive_to_utc),
+        start_time: meeting.start_time,
+        end_time: meeting.end_time,
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
     };
@@ -893,6 +892,8 @@ pub async fn get_public_meeting_info(
 // ============================================================================
 
 /// Request to create a meeting via API key
+///
+/// **Note**: `start_time` and `end_time` are in Nigeria Time (WAT, UTC+1).
 #[derive(Debug, serde::Deserialize, Validate, utoipa::ToSchema)]
 pub struct ApiCreateMeetingRequest {
     #[validate(length(
@@ -902,9 +903,13 @@ pub struct ApiCreateMeetingRequest {
     ))]
     pub title: String,
 
-    pub start_time: chrono::DateTime<chrono::Utc>,
+    /// Start time in Nigeria Time (WAT, UTC+1). Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T14:00:00")]
+    pub start_time: chrono::NaiveDateTime,
 
-    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// End time in Nigeria Time (WAT, UTC+1). Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T15:00:00")]
+    pub end_time: Option<chrono::NaiveDateTime>,
 
     #[serde(default)]
     pub is_private: Option<bool>,
@@ -953,7 +958,7 @@ pub async fn api_create_meeting(
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user_id = api_claims.user_id;
-    let now = chrono::Utc::now();
+    let now = now_naive();
 
     // Validate start time is in the future (at least 1 minute from now)
     if payload.start_time <= now + chrono::Duration::minutes(1) {
@@ -982,9 +987,9 @@ pub async fn api_create_meeting(
     // Generate meeting identifier (human-friendly code)
     let meeting_identifier = generate_meeting_identifier();
     let meeting_id = Uuid::new_v4();
-    let now_naive = utc_to_naive(chrono::Utc::now());
 
     // Create meeting with status = scheduled
+    // Input times are already in Nigeria time, store directly
     let meeting = meetings::ActiveModel {
         id: Set(meeting_id),
         meeting_identifier: Set(meeting_identifier),
@@ -993,11 +998,11 @@ pub async fn api_create_meeting(
         title: Set(payload.title),
         metadata: Set(payload.metadata),
         is_private: Set(payload.is_private.unwrap_or(false)),
-        start_time: Set(utc_to_naive(payload.start_time)),
-        end_time: Set(payload.end_time.map(utc_to_naive)),
+        start_time: Set(payload.start_time),
+        end_time: Set(payload.end_time),
         status: Set(MeetingStatus::Scheduled),
-        created_at: Set(now_naive),
-        updated_at: Set(now_naive),
+        created_at: Set(now),
+        updated_at: Set(now),
     };
 
     let meeting = meeting.insert(&state.db).await?;
@@ -1009,12 +1014,12 @@ pub async fn api_create_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: naive_to_utc(meeting.start_time),
-        end_time: meeting.end_time.map(naive_to_utc),
+        start_time: meeting.start_time,
+        end_time: meeting.end_time,
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: naive_to_utc(meeting.created_at),
-        updated_at: naive_to_utc(meeting.updated_at),
+        created_at: meeting.created_at,
+        updated_at: meeting.updated_at,
     };
 
     Ok((

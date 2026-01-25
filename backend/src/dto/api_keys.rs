@@ -2,22 +2,15 @@
 //!
 //! Data Transfer Objects for API key management endpoints.
 
-use chrono::{DateTime, Utc};
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-/// Request to create a new API key
+/// Request to create a new API key (no user-configurable fields - system sets defaults)
 #[derive(Debug, Deserialize, Validate, ToSchema)]
-pub struct CreateApiKeyRequest {
-    /// Usage limit for the API key (default: 1000)
-    #[validate(range(min = 1, max = 1000000, message = "Usage limit must be between 1 and 1,000,000"))]
-    pub usage_limit: Option<i32>,
-
-    /// Expiration date for the API key
-    pub expires_at: DateTime<Utc>,
-}
+pub struct CreateApiKeyRequest {}
 
 /// Response when creating an API key (includes the full key - only shown once)
 #[derive(Debug, Serialize, ToSchema)]
@@ -27,9 +20,9 @@ pub struct CreateApiKeyResponse {
     pub api_key: String,
     pub usage_limit: i32,
     pub used_count: i32,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: NaiveDateTime,
     pub status: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
 }
 
 /// Response for API key info (masked key)
@@ -40,10 +33,10 @@ pub struct ApiKeyResponse {
     pub api_key_masked: String,
     pub usage_limit: i32,
     pub used_count: i32,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: NaiveDateTime,
     pub status: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 /// Response for listing API keys

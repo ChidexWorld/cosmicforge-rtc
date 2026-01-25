@@ -1,8 +1,12 @@
 //! Meeting DTOs
 //!
 //! Data Transfer Objects for meeting-related API endpoints.
+//!
+//! Datetime values pass through as-is - no timezone conversion.
+//! Send times in format: "2026-01-25T14:00:00"
 
-use chrono::{DateTime, Utc};
+use chrono::NaiveDateTime;
+// Note: No timezone conversions - input/output passes through exactly as provided
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use utoipa::ToSchema;
@@ -19,9 +23,13 @@ pub struct CreateMeetingRequest {
     ))]
     pub title: String,
 
-    pub start_time: DateTime<Utc>,
+    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T14:00:00")]
+    pub start_time: NaiveDateTime,
 
-    pub end_time: Option<DateTime<Utc>>,
+    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T15:00:00")]
+    pub end_time: Option<NaiveDateTime>,
 
     #[serde(default)]
     pub is_private: Option<bool>,
@@ -39,9 +47,13 @@ pub struct UpdateMeetingRequest {
     ))]
     pub title: Option<String>,
 
-    pub start_time: Option<DateTime<Utc>>,
+    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T14:00:00")]
+    pub start_time: Option<NaiveDateTime>,
 
-    pub end_time: Option<DateTime<Utc>>,
+    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
+    #[schema(example = "2026-01-25T15:00:00")]
+    pub end_time: Option<NaiveDateTime>,
 
     pub is_private: Option<bool>,
 
@@ -49,8 +61,6 @@ pub struct UpdateMeetingRequest {
 }
 
 
-// Re-export datetime helpers from utils module for backward compatibility
-pub use crate::utils::datetime::{naive_to_utc, utc_to_naive};
 
 /// Request to join a meeting
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -76,14 +86,16 @@ pub struct MeetingResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<JsonValue>,
     pub is_private: bool,
-    pub start_time: DateTime<Utc>,
+    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
+    pub start_time: NaiveDateTime,
+    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_time: Option<DateTime<Utc>>,
+    pub end_time: Option<NaiveDateTime>,
     pub status: String,
     /// Join URL for the hosted UI (e.g., https://meet.cosmicforge.com/join/ABCD1234)
     pub join_url: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
 }
 
 /// Participant response structure
@@ -96,7 +108,7 @@ pub struct ParticipantResponse {
     pub role: String,
     pub display_name: String,
     pub status: String,
-    pub join_time: DateTime<Utc>,
+    pub join_time: NaiveDateTime,
 }
 
 /// Response for joining a meeting (includes join token)
@@ -160,9 +172,9 @@ pub struct PublicMeetingInfoResponse {
     pub meeting_identifier: String,
     pub title: String,
     pub is_private: bool,
-    pub start_time: DateTime<Utc>,
+    pub start_time: NaiveDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_time: Option<DateTime<Utc>>,
+    pub end_time: Option<NaiveDateTime>,
     pub status: String,
     /// Join URL for the hosted UI
     pub join_url: String,
@@ -206,9 +218,9 @@ pub struct DetailedParticipantResponse {
     pub role: String,
     pub display_name: String,
     pub status: String,
-    pub join_time: DateTime<Utc>,
+    pub join_time: NaiveDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub leave_time: Option<DateTime<Utc>>,
+    pub leave_time: Option<NaiveDateTime>,
     pub is_muted: bool,
     pub is_video_on: bool,
     pub is_screen_sharing: bool,
@@ -239,7 +251,7 @@ pub struct WaitingParticipantResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
     pub display_name: String,
-    pub join_time: DateTime<Utc>,
+    pub join_time: NaiveDateTime,
 }
 
 /// Response for listing waiting participants
@@ -309,7 +321,7 @@ pub struct ChatMessageResponse {
     pub participant_id: Uuid,
     pub display_name: String,
     pub message: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
 }
 
 /// Response for sending a chat message
@@ -329,8 +341,8 @@ pub struct ChatMessagesListResponse {
 /// Query parameters for chat messages
 #[derive(Debug, Deserialize)]
 pub struct ChatMessagesQuery {
-    /// Filter messages after this timestamp
-    pub after: Option<DateTime<Utc>>,
+    /// Filter messages after this timestamp. Format: "YYYY-MM-DDTHH:MM:SS"
+    pub after: Option<NaiveDateTime>,
     /// Limit number of messages (default: 100, max: 500)
     pub limit: Option<u64>,
 }

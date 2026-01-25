@@ -8,6 +8,7 @@ use crate::{
     error::{ApiError, ApiResult},
     models::api_keys::{self, ApiKeyStatus, Entity as ApiKeys},
     state::AppState,
+    utils::now_naive,
 };
 use axum::{
     extract::{Request, State},
@@ -44,7 +45,7 @@ pub async fn api_key_middleware(
     }
 
     // Check if API key has expired
-    let now = chrono::Utc::now().naive_utc();
+    let now = now_naive();
     if api_key.expires_at < now {
         return Err(ApiError::Unauthorized("API key has expired".to_string()));
     }
@@ -109,7 +110,7 @@ pub async fn combined_auth_middleware(
                 }
 
                 // Check if API key has expired
-                let now = chrono::Utc::now().naive_utc();
+                let now = now_naive();
                 if api_key.expires_at < now {
                     return Err(ApiError::Unauthorized("API key has expired".to_string()));
                 }

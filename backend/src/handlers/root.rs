@@ -1,6 +1,8 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 
+use chrono::Utc;
+
 /// Root endpoint - Application information
 ///
 /// Returns a brief description of the CosmicForge RTC application,
@@ -54,7 +56,7 @@ pub async fn get_app_info() -> impl IntoResponse {
             "chat": "See backend/docs/CHAT.md"
         },
         "status": "operational",
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "timestamp": Utc::now().to_rfc3339()
     });
 
     (StatusCode::OK, Json(info))

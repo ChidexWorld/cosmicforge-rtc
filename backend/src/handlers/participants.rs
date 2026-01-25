@@ -14,16 +14,16 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
 use crate::{
-    dto::{meetings::*, ApiResponse},
+    dto::meetings::*,
     error::{ApiError, ApiResult},
     models::{
-        meetings::{self, Entity as Meetings},
+        meetings::Entity as Meetings,
         participants::{self, Entity as Participants, ParticipantRole, ParticipantStatus},
         session_logs::{self, EventType},
     },
     services::auth::Claims,
     state::AppState,
-    utils::{format_participant_status, format_role, naive_to_utc, utc_to_naive},
+    utils::{format_participant_status, format_role, now_naive},
 };
 
 // ============================================================================
@@ -97,8 +97,8 @@ pub async fn list_participants(
             role: format_role(&p.role),
             display_name: p.display_name,
             status: format_participant_status(&p.status),
-            join_time: naive_to_utc(p.join_time),
-            leave_time: p.leave_time.map(naive_to_utc),
+            join_time: p.join_time,
+            leave_time: p.leave_time,
             is_muted: p.is_muted,
             is_video_on: p.is_video_on,
             is_screen_sharing: p.is_screen_sharing,
@@ -163,7 +163,7 @@ pub async fn kick_participant(
     }
 
     // Update participant status to kicked
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let mut participant_update: participants::ActiveModel = participant.clone().into();
     participant_update.status = Set(ParticipantStatus::Kicked);
     participant_update.leave_time = Set(Some(now));
@@ -245,7 +245,7 @@ pub async fn list_waiting_participants(
             participant_id: p.id,
             user_id: p.user_id,
             display_name: p.display_name,
-            join_time: naive_to_utc(p.join_time),
+            join_time: p.join_time,
         })
         .collect();
 
@@ -314,7 +314,7 @@ pub async fn admit_participant(
     participant_update.update(&state.db).await?;
 
     // Log the admit event
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),
@@ -388,7 +388,7 @@ pub async fn deny_participant(
     }
 
     // Deny participant (change status to kicked and set leave time)
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let mut participant_update: participants::ActiveModel = participant.clone().into();
     participant_update.status = Set(ParticipantStatus::Kicked);
     participant_update.leave_time = Set(Some(now));
@@ -474,7 +474,7 @@ pub async fn update_audio(
     let updated_participant = participant_update.update(&state.db).await?;
 
     // Log the media toggle event
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(participant.meeting_id),
@@ -554,7 +554,7 @@ pub async fn update_video(
     let updated_participant = participant_update.update(&state.db).await?;
 
     // Log the media toggle event
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(participant.meeting_id),
@@ -648,7 +648,7 @@ pub async fn start_screen_share(
     participant_update.update(&state.db).await?;
 
     // Log the screen share start event
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),
@@ -725,7 +725,7 @@ pub async fn stop_screen_share(
     participant_update.update(&state.db).await?;
 
     // Log the screen share stop event
-    let now = utc_to_naive(chrono::Utc::now());
+    let now = now_naive();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),

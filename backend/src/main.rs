@@ -88,15 +88,15 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
 
+    // Start server
+    let addr = app_config.server_addr();
+
     // Build application with routes
     let app = Router::new()
         .merge(routes::create_routes(state))
-        .merge(swagger::swagger_router())
+        .merge(swagger::swagger_router(&addr))
         .layer(cors)
         .layer(tower_http::trace::TraceLayer::new_for_http());
-
-    // Start server
-    let addr = app_config.server_addr();
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     tracing::info!("🚀 Server running on http://{}", addr);

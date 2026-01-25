@@ -124,10 +124,6 @@ use utoipa_swagger_ui::SwaggerUi;
             name = "CosmicForge Team",
             email = "support@cosmicforge.com"
         )
-    ),
-    servers(
-        (url = "http://127.0.0.1:8080", description = "Development server"),
-        (url = "https://api.cosmicforge.com", description = "Production server")
     )
 )]
 pub struct ApiDoc;
@@ -157,8 +153,20 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-pub fn swagger_router() -> Router {
+/// Creates the Swagger UI router with dynamic server URL from environment
+pub fn swagger_router(server_addr: &str) -> Router {
+    let mut openapi = ApiDoc::openapi();
+
+    // Set servers dynamically from environment
+    let mut current_server = utoipa::openapi::Server::new(format!("http://{}", server_addr));
+    current_server.description = Some("Current server".to_string());
+
+    let mut prod_server = utoipa::openapi::Server::new("https://api.cosmicforge.com");
+    prod_server.description = Some("Production server".to_string());
+
+    openapi.servers = Some(vec![current_server, prod_server]);
+
     SwaggerUi::new("/swagger-ui")
-        .url("/api-docs/openapi.json", ApiDoc::openapi())
+        .url("/api-docs/openapi.json", openapi)
         .into()
 }

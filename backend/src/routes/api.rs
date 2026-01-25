@@ -11,6 +11,6 @@ use axum::{middleware, routing::post, Router};
 pub fn api_routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/meetings", post(meetings::api_create_meeting))
-        .route("/:id/join", post(meetings::api_join_meeting))
+        .route("/meetings/:id/join", post(meetings::api_join_meeting))
         .route_layer(middleware::from_fn_with_state(state, api_key_middleware))
 }

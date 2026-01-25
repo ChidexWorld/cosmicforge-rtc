@@ -10,17 +10,17 @@ use axum::{
 use rand::Rng;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use uuid::Uuid;
-use validator::Validate;
 
 use crate::{
     dto::{
-        naive_to_utc, utc_to_naive, ApiKeyApiResponse, ApiKeyResponse, CreateApiKeyApiResponse,
+        ApiKeyApiResponse, ApiKeyResponse, CreateApiKeyApiResponse,
         CreateApiKeyRequest, CreateApiKeyResponse, ListApiKeysResponse, RevokeApiKeyResponse,
     },
     error::{ApiError, ApiResult},
     models::api_keys::{self, ApiKeyStatus, Entity as ApiKeys},
     services::auth::Claims,
     state::AppState,
+    utils::now_naive,
 };
 
 /// Generate a secure random API key
@@ -71,36 +71,32 @@ pub async fn create_api_key(
     Extension(claims): Extension<Claims>,
     Json(payload): Json<CreateApiKeyRequest>,
 ) -> ApiResult<(StatusCode, Json<CreateApiKeyApiResponse>)> {
-    payload
-        .validate()
-        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+    // Validation not needed - no user-configurable fields
+    let _ = payload;
 
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    // Validate expiration date is in the future
-    let now = chrono::Utc::now();
-    if payload.expires_at <= now {
-        return Err(ApiError::ValidationError(
-            "Expiration date must be in the future".to_string(),
-        ));
-    }
+    let now = now_naive();
+
+    // System-controlled defaults
+    const DEFAULT_USAGE_LIMIT: i32 = 100;
+    let expires_at = now + chrono::Duration::days(20);
 
     // Generate API key
     let raw_api_key = generate_api_key();
     let api_key_id = Uuid::new_v4();
-    let now_naive = utc_to_naive(now);
 
     let api_key = api_keys::ActiveModel {
         id: Set(api_key_id),
         user_id: Set(user_id),
         api_key: Set(raw_api_key.clone()),
-        usage_limit: Set(payload.usage_limit.unwrap_or(1000)),
+        usage_limit: Set(DEFAULT_USAGE_LIMIT),
         used_count: Set(0),
-        expires_at: Set(utc_to_naive(payload.expires_at)),
+        expires_at: Set(expires_at),
         status: Set(ApiKeyStatus::Active),
-        created_at: Set(now_naive),
-        updated_at: Set(now_naive),
+        created_at: Set(now),
+        updated_at: Set(now),
     };
 
     let api_key = api_key.insert(&state.db).await?;
@@ -110,9 +106,9 @@ pub async fn create_api_key(
         api_key: raw_api_key,
         usage_limit: api_key.usage_limit,
         used_count: api_key.used_count,
-        expires_at: naive_to_utc(api_key.expires_at),
+        expires_at: api_key.expires_at,
         status: format_status(&api_key.status),
-        created_at: naive_to_utc(api_key.created_at),
+        created_at: api_key.created_at,
     };
 
     Ok((
@@ -157,10 +153,10 @@ pub async fn list_api_keys(
             api_key_masked: mask_api_key(&key.api_key),
             usage_limit: key.usage_limit,
             used_count: key.used_count,
-            expires_at: naive_to_utc(key.expires_at),
+            expires_at: key.expires_at,
             status: format_status(&key.status),
-            created_at: naive_to_utc(key.created_at),
-            updated_at: naive_to_utc(key.updated_at),
+            created_at: key.created_at,
+            updated_at: key.updated_at,
         })
         .collect();
 
@@ -206,10 +202,10 @@ pub async fn get_api_key(
         api_key_masked: mask_api_key(&api_key.api_key),
         usage_limit: api_key.usage_limit,
         used_count: api_key.used_count,
-        expires_at: naive_to_utc(api_key.expires_at),
+        expires_at: api_key.expires_at,
         status: format_status(&api_key.status),
-        created_at: naive_to_utc(api_key.created_at),
-        updated_at: naive_to_utc(api_key.updated_at),
+        created_at: api_key.created_at,
+        updated_at: api_key.updated_at,
     };
 
     Ok(Json(ApiKeyApiResponse {
@@ -256,7 +252,7 @@ pub async fn revoke_api_key(
 
     let mut api_key: api_keys::ActiveModel = api_key.into();
     api_key.status = Set(ApiKeyStatus::Revoked);
-    api_key.updated_at = Set(utc_to_naive(chrono::Utc::now()));
+    api_key.updated_at = Set(now_naive());
     api_key.update(&state.db).await?;
 
     Ok(Json(RevokeApiKeyResponse {
