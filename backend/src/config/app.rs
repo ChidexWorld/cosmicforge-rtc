@@ -21,6 +21,18 @@ pub struct AppConfig {
 
     /// Frontend/Hosted UI URL (e.g., https://meet.cosmicforge.com)
     pub app_url: String,
+
+    /// Google OAuth Client ID
+    pub google_client_id: String,
+
+    /// Google OAuth Client Secret
+    pub google_client_secret: String,
+
+    /// Google OAuth Redirect URL
+    pub google_redirect_url: String,
+
+    /// Require email verification before login (default: true)
+    pub require_email_verification: bool,
 }
 
 impl AppConfig {
@@ -44,6 +56,20 @@ impl AppConfig {
                 .unwrap_or_else(|_| "http://localhost:3000".to_string())
                 .trim_end_matches('/')
                 .to_string(),
+
+            google_client_id: std::env::var("GOOGLE_CLIENT_ID")
+                .map_err(|_| ApiError::InternalError("GOOGLE_CLIENT_ID must be set".to_string()))?,
+
+            google_client_secret: std::env::var("GOOGLE_CLIENT_SECRET")
+                .map_err(|_| ApiError::InternalError("GOOGLE_CLIENT_SECRET must be set".to_string()))?,
+
+            google_redirect_url: std::env::var("GOOGLE_REDIRECT_URL")
+                .map_err(|_| ApiError::InternalError("GOOGLE_REDIRECT_URL must be set".to_string()))?,
+
+            require_email_verification: std::env::var("EMAIL_VERIFICATION_REQUIRED")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
         })
     }
 
