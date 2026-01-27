@@ -14,6 +14,14 @@ pub struct AppState {
     pub livekit_service: Arc<LiveKitService>,
     /// Frontend/Hosted UI URL for generating join links
     pub app_url: String,
+    /// Google OAuth Client ID
+    pub google_client_id: String,
+    /// Google OAuth Client Secret
+    pub google_client_secret: String,
+    /// Google OAuth Redirect URL
+    pub google_redirect_url: String,
+    /// Require email verification before login
+    pub require_email_verification: bool,
 }
 
 impl AppState {
@@ -29,6 +37,10 @@ impl AppState {
             email_service: Arc::new(EmailService::new(db, email_config)),
             livekit_service: Arc::new(LiveKitService::new(livekit_config)),
             app_url: app_config.app_url.clone(),
+            google_client_id: app_config.google_client_id.clone(),
+            google_client_secret: app_config.google_client_secret.clone(),
+            google_redirect_url: app_config.google_redirect_url.clone(),
+            require_email_verification: app_config.require_email_verification,
         }
     }
 

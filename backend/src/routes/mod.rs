@@ -3,6 +3,7 @@ pub mod api_keys;
 pub mod auth;
 pub mod meetings;
 pub mod participants;
+pub mod users;
 
 use crate::{handlers, state::AppState};
 use axum::{routing::get, Router};
@@ -21,5 +22,6 @@ pub fn create_routes(state: AppState) -> Router {
             api_keys::api_key_routes(state.clone()),
         )
         .nest("/api/v1/api", api::api_routes(state.clone()))
+        .nest("/api/v1/users", users::users_routes(state.clone()))
         .with_state(state)
 }

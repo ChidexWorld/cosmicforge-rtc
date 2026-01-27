@@ -1,5 +1,5 @@
 use crate::{handlers::auth, state::AppState};
-use axum::{routing::post, Router};
+use axum::{routing::{get, post}, Router};
 
 pub fn auth_routes() -> Router<AppState> {
     Router::new()
@@ -14,4 +14,7 @@ pub fn auth_routes() -> Router<AppState> {
         )
         .route("/forgot-password", post(auth::forgot_password))
         .route("/reset-password", post(auth::reset_password))
+        // OAuth routes
+        .route("/oauth/google", get(auth::oauth_google_init))
+        .route("/oauth/google/callback", get(auth::oauth_google_callback))
 }

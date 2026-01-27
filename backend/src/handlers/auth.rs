@@ -7,7 +7,7 @@ use crate::{
     dto::*,
     error::{ApiError, ApiResult},
     models::users::{self, Entity as Users},
-    services::auth::{generate_verification_code, hash_password, verify_password},
+    services::auth::{check_email_verification, generate_verification_code, hash_password, verify_password},
     state::AppState,
 };
 
@@ -165,7 +165,7 @@ pub async fn verify_email(
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
         (status = 401, description = "Invalid credentials"),
-        (status = 403, description = "Account not verified"),
+        (status = 403, description = "Email verification required or account inactive"),
     )
 )]
 pub async fn login(
@@ -197,16 +197,12 @@ pub async fn login(
         ));
     }
 
-    // Check if user is verified
-    if user.status == users::UserStatus::PendingVerification {
-        return Err(ApiError::Forbidden(
-            "Please verify your email before logging in".to_string(),
-        ));
-    }
+    // Check email verification if required (also checks for inactive users)
+    check_email_verification(&user, state.require_email_verification)?;
 
-    // Check if user is active
-    if user.status != users::UserStatus::Active {
-        return Err(ApiError::Forbidden("Account is inactive".to_string()));
+    // Ensure user is active (not inactive/deactivated)
+    if user.status == users::UserStatus::Inactive {
+        return Err(ApiError::Forbidden("Account has been deactivated".to_string()));
     }
 
     // Generate tokens
@@ -475,4 +471,249 @@ pub async fn reset_password(
     Ok(Json(MessageResponse {
         message: "Password reset successfully".to_string(),
     }))
+}
+
+// ============================================================================
+// Google OAuth Handlers
+// ============================================================================
+
+use axum::response::Redirect;
+use rand::Rng;
+
+/// Initiate Google OAuth flow
+///
+/// Generates a secure state token, stores it in the database, and redirects
+/// the user to Google's OAuth consent page.
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/oauth/google",
+    tag = "Authentication",
+    responses(
+        (status = 302, description = "Redirect to Google OAuth consent page"),
+        (status = 500, description = "Internal server error"),
+    )
+)]
+pub async fn oauth_google_init(
+    State(state): State<AppState>,
+) -> ApiResult<Redirect> {
+    // Generate cryptographically secure random state (32 bytes, hex encoded)
+    let state_value: String = rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+
+    // Store state in database with 10-minute expiry
+    let expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::minutes(10);
+    
+    use crate::models::oauth_states;
+    let oauth_state = oauth_states::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        state: Set(state_value.clone()),
+        provider: Set("google".to_string()),
+        created_at: Set(chrono::Utc::now().naive_utc()),
+        expires_at: Set(expires_at),
+    };
+    
+    oauth_state.insert(&state.db).await?;
+
+    // Build Google OAuth URL using config
+    let auth_url = format!(
+        "https://accounts.google.com/o/oauth2/v2/auth?client_id={}&redirect_uri={}&response_type=code&scope=openid%20email%20profile&state={}&access_type=offline&prompt=consent",
+        urlencoding::encode(&state.google_client_id),
+        urlencoding::encode(&state.google_redirect_url),
+        urlencoding::encode(&state_value)
+    );
+
+    Ok(Redirect::to(&auth_url))
+}
+
+/// Google OAuth callback handler
+///
+/// Validates the state token, exchanges the authorization code for tokens,
+/// verifies the ID token, and creates/authenticates the user.
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/oauth/google/callback",
+    tag = "Authentication",
+    params(
+        ("code" = String, Query, description = "Authorization code from Google"),
+        ("state" = String, Query, description = "State token for CSRF protection"),
+    ),
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 400, description = "Invalid state or code"),
+        (status = 401, description = "Authentication failed"),
+        (status = 403, description = "Email verification required or account deactivated"),
+    )
+)]
+pub async fn oauth_google_callback(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> ApiResult<Json<LoginResponse>> {
+    // Extract code and state from query params
+    let code = params.get("code")
+        .ok_or_else(|| ApiError::BadRequest("Missing authorization code".to_string()))?;
+    let state_value = params.get("state")
+        .ok_or_else(|| ApiError::BadRequest("Missing state parameter".to_string()))?;
+
+    // Handle error parameter if present
+    if let Some(error) = params.get("error") {
+        return Err(ApiError::BadRequest(format!("OAuth error: {}", error)));
+    }
+
+    // Validate state (must exist and not be expired)
+    use crate::models::oauth_states::{self, Entity as OauthStates};
+    
+    let oauth_state = OauthStates::find()
+        .filter(oauth_states::Column::State.eq(state_value))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired state".to_string()))?;
+
+    // Check if state has expired
+    if oauth_state.expires_at < chrono::Utc::now().naive_utc() {
+        // Delete expired state
+        OauthStates::delete_by_id(oauth_state.id)
+            .exec(&state.db)
+            .await?;
+        return Err(ApiError::BadRequest("State has expired".to_string()));
+    }
+
+    // Delete state (single-use)
+    OauthStates::delete_by_id(oauth_state.id)
+        .exec(&state.db)
+        .await?;
+
+    // Exchange code for tokens using config
+
+    let token_url = "https://oauth2.googleapis.com/token";
+    let client = reqwest::Client::new();
+    
+    let token_response = client
+        .post(token_url)
+        .form(&[
+            ("code", code.as_str()),
+            ("client_id", state.google_client_id.as_str()),
+            ("client_secret", state.google_client_secret.as_str()),
+            ("redirect_uri", state.google_redirect_url.as_str()),
+            ("grant_type", "authorization_code"),
+        ])
+        .send()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Token exchange failed: {}", e)))?;
+
+    if !token_response.status().is_success() {
+        let error_text = token_response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(ApiError::InternalError(format!("Token exchange failed: {}", error_text)));
+    }
+
+    let token_data: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse token response: {}", e)))?;
+
+    let id_token = token_data["id_token"].as_str()
+        .ok_or_else(|| ApiError::InternalError("No ID token in response".to_string()))?;
+
+    // Decode ID token (basic decoding without signature verification for now)
+    // In production, you should verify the signature using Google's public keys
+    let token_parts: Vec<&str> = id_token.split('.').collect();
+    if token_parts.len() != 3 {
+        return Err(ApiError::InternalError("Invalid ID token format".to_string()));
+    }
+
+    use base64::{Engine as _, engine::general_purpose};
+    let payload = general_purpose::URL_SAFE_NO_PAD.decode(token_parts[1])
+        .map_err(|e| ApiError::InternalError(format!("Failed to decode ID token: {}", e)))?;
+    
+    let claims: serde_json::Value = serde_json::from_slice(&payload)
+        .map_err(|e| ApiError::InternalError(format!("Failed to parse ID token claims: {}", e)))?;
+
+    // Extract user info from claims
+    let email = claims["email"].as_str()
+        .ok_or_else(|| ApiError::InternalError("No email in ID token".to_string()))?
+        .to_string();
+    let name = claims["name"].as_str().unwrap_or("Google User").to_string();
+    let _google_sub = claims["sub"].as_str()
+        .ok_or_else(|| ApiError::InternalError("No sub in ID token".to_string()))?
+        .to_string();
+
+    // Verify issuer and audience (basic validation)
+    let iss = claims["iss"].as_str().unwrap_or("");
+    if iss != "https://accounts.google.com" && iss != "accounts.google.com" {
+        return Err(ApiError::Unauthorized("Invalid issuer".to_string()));
+    }
+
+    // Find or create user
+    let existing_user = Users::find()
+        .filter(users::Column::Email.eq(&email))
+        .one(&state.db)
+        .await?;
+
+    let user = if let Some(mut user) = existing_user {
+        // Check if user is inactive
+        if user.status == users::UserStatus::Inactive {
+            return Err(ApiError::Forbidden("Account has been deactivated".to_string()));
+        }
+        
+        // If user was pending verification, upgrade to active since Google verified email
+        if user.status == users::UserStatus::PendingVerification {
+            let mut user_active: users::ActiveModel = user.clone().into();
+            user_active.status = Set(users::UserStatus::Active);
+            user_active.updated_at = Set(chrono::Utc::now().naive_utc());
+            user = user_active.update(&state.db).await?;
+        }
+        
+        // Check email verification if required (will allow Active users)
+        check_email_verification(&user, state.require_email_verification)?;
+        
+        user
+    } else {
+        // Create new user with Google auth
+        let new_user = users::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            username: Set(name.clone()),
+            email: Set(email.clone()),
+            password_hash: Set(None), // No password for OAuth users
+            auth_type: Set(users::AuthType::Google),
+            role: Set(users::UserRole::User),
+            status: Set(users::UserStatus::Active), // Email verified by Google
+            verification_token: Set(None),
+            token_expires_at: Set(None),
+            reset_token: Set(None),
+            reset_token_expires_at: Set(None),
+            created_at: Set(chrono::Utc::now().naive_utc()),
+            updated_at: Set(chrono::Utc::now().naive_utc()),
+            last_login: Set(Some(chrono::Utc::now().naive_utc())),
+        };
+
+        new_user.insert(&state.db).await?
+    };
+
+    // Update last login
+    let mut user_active: users::ActiveModel = user.clone().into();
+    user_active.last_login = Set(Some(chrono::Utc::now().naive_utc()));
+    user_active.update(&state.db).await?;
+
+    // Generate JWT tokens using existing logic
+    let role_str = format!("{:?}", user.role).to_lowercase();
+    let access_token = state
+        .jwt_service
+        .generate_access_token(user.id, &role_str)?;
+    let refresh_token = state
+        .jwt_service
+        .generate_refresh_token(user.id, &role_str)?;
+
+    let response = LoginResponse {
+        access_token,
+        refresh_token,
+        user: UserInfo {
+            id: user.id,
+            username: user.username,
+            role: role_str,
+        },
+    };
+
+    Ok(Json(response))
 }

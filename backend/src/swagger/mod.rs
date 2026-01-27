@@ -16,6 +16,9 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::handlers::auth::resend_verification_email,
         crate::handlers::auth::forgot_password,
         crate::handlers::auth::reset_password,
+        // OAuth endpoints
+        crate::handlers::auth::oauth_google_init,
+        crate::handlers::auth::oauth_google_callback,
         // API Key endpoints
         crate::handlers::api_keys::create_api_key,
         crate::handlers::api_keys::list_api_keys,
@@ -47,6 +50,10 @@ use utoipa_swagger_ui::SwaggerUi;
         // Chat endpoints
         crate::handlers::chat::send_message,
         crate::handlers::chat::get_messages,
+        // User endpoints
+        crate::handlers::users::get_current_user,
+        crate::handlers::users::update_current_user,
+        crate::handlers::users::deactivate_account,
     ),
     components(
         schemas(
@@ -103,6 +110,9 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::dto::ChatMessageResponse,
             crate::dto::SendChatMessageApiResponse,
             crate::dto::ChatMessagesListResponse,
+            // User schemas
+            crate::dto::UserMeResponse,
+            crate::dto::UpdateMeRequest,
         )
     ),
     modifiers(&SecurityAddon),
@@ -114,7 +124,8 @@ use utoipa_swagger_ui::SwaggerUi;
         (name = "Participants", description = "Participant management (kick, list)"),
         (name = "Waiting Room", description = "Admit/Deny participants from waiting room"),
         (name = "Media Control", description = "Control audio, video, and screen sharing"),
-        (name = "Chat", description = "In-meeting chat with hybrid real-time architecture.\n\n## Architecture\n- **LiveKit Data Channels**: Real-time message delivery via `publishData()` and `RoomEvent.DataReceived`\n- **REST API**: Message persistence and history loading for late joiners\n\n## Flow\n1. **Send**: POST /chat (persist) → LiveKit publishData() (broadcast)\n2. **Receive**: Listen to RoomEvent.DataReceived for instant delivery\n3. **Late Join**: GET /chat to load message history\n\n## Notes\n- Messages are **volatile** - automatically deleted when meeting ends\n- Only participants with 'joined' status can send/receive messages")
+        (name = "Chat", description = "In-meeting chat with hybrid real-time architecture.\n\n## Architecture\n- **LiveKit Data Channels**: Real-time message delivery via `publishData()` and `RoomEvent.DataReceived`\n- **REST API**: Message persistence and history loading for late joiners\n\n## Flow\n1. **Send**: POST /chat (persist) → LiveKit publishData() (broadcast)\n2. **Receive**: Listen to RoomEvent.DataReceived for instant delivery\n3. **Late Join**: GET /chat to load message history\n\n## Notes\n- Messages are **volatile** - automatically deleted when meeting ends\n- Only participants with 'joined' status can send/receive messages"),
+        (name = "Users", description = "User profile management and account operations.\n\n## Endpoints\n- **GET /users/me**: Get current user profile\n- **PATCH /users/me**: Update profile (username only)\n- **POST /users/me/deactivate**: Deactivate account (soft delete)\n\n## Notes\n- All endpoints require JWT authentication\n- Deactivated users are blocked by auth middleware\n- Deactivation immediately invalidates all tokens")
     ),
     info(
         title = "CosmicForge RTC API",
