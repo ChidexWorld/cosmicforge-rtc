@@ -1,0 +1,88 @@
+"use client";
+
+import { useState } from "react";
+import Image from "next/image";
+import { cn } from "@/lib/utils";
+import { Home, Video, Calendar, MessageSquare, Settings, ChevronRight, ChevronLeft } from "lucide-react";
+
+const menu = [
+  { label: "Dashboard", icon: Home },
+  { label: "Meetings", icon: Video },
+  { label: "Schedule", icon: Calendar },
+  { label: "Messages", icon: MessageSquare },
+  { label: "Settings", icon: Settings },
+];
+
+export default function AppSidebar() {
+  const [expanded, setExpanded] = useState(false);
+  const [active, setActive] = useState("Dashboard");
+
+  return (
+    <aside
+      className={cn(
+        "relative h-[calc(100vh-2rem)] my-4 ml-4 bg-[#FAFAFB] rounded-[40px] transition-all duration-300 shadow-sm",
+        expanded ? "w-50" : "w-16",
+      )}
+    >
+      {/* Logo */}
+      <div className="h-16 flex items-center pl-4 overflow-hidden">
+        <Image
+          src="/logo.png"
+          alt="CosmicForge Logo"
+          width={140}
+          height={32}
+          className="w-[120px] min-w-[120px] object-contain object-left"
+          priority
+        />
+      </div>
+
+      {/* Toggle Button */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="absolute -right-3 top-5 z-10 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-[#029CD4] hover:opacity-70 transition-opacity cursor-pointer"
+        aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+      >
+        {expanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+      </button>
+
+      {/* Nav */}
+      <nav className="mt-6 space-y-2">
+        {menu.map(({ label, icon: Icon }) => {
+          const isActive = active === label;
+
+          return (
+            <button
+              key={label}
+              onClick={() => setActive(label)}
+              className={cn(
+                "relative w-full flex items-center gap-3 px-4 py-3 transition-colors",
+                isActive ? "text-[#029CD4]" : "text-[#B6B6B6]",
+              )}
+            >
+              <Icon className="w-5 h-5" />
+
+              {expanded && <span className="text-sm font-medium">{label}</span>}
+
+              {/* Active indicator */}
+              {isActive && (
+                <span className="absolute right-0 top-1/2 -translate-y-1/2 h-6 w-[3px] bg-[#029CD4] rounded-full" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Profile */}
+      <div className="absolute bottom-6 left-0 w-full flex items-center gap-3 px-4">
+        <Image
+          src="/profile.png"
+          alt="Profile"
+          width={36}
+          height={36}
+          className="w-9 h-9 min-w-9 rounded-full object-cover"
+        />
+        {expanded && <span className="text-sm font-medium text-gray-700 truncate">Profile</span>}
+      </div>
+    </aside>
+  );
+}
