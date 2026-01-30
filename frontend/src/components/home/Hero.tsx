@@ -182,7 +182,7 @@ const Hero = () => {
       <div className="flex w-full max-w-xs sm:max-w-md gap-2  mb-6 sm:mb-12">
         <Input
           type="text"
-          placeholder="Enter Link"
+          placeholder="Enter Link or Code"
           className="flex-1 border-[#029CD4] focus:ring-[#029CD44D] text-sm sm:text-base"
         />
         <Button size="sm" className="px-5 sm:px-8">
