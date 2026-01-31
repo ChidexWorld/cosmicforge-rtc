@@ -119,7 +119,7 @@ const LoginModal = () => {
         {/* Forgot Password */}
         <div className="flex justify-end">
           <Link
-            href="/reset-password"
+            href="/forgot-password"
             className="text-sm text-[#029CD4] font-semibold hover:underline"
           >
             Forgot Password?
