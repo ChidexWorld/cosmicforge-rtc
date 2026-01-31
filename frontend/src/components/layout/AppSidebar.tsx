@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { Home, Video, Calendar, MessageSquare, Settings, ChevronRight, ChevronLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Home, Video, Calendar, MessageSquare, Settings, ChevronRight, ChevronLeft, LogOut } from "lucide-react";
+import { useLogout } from "@/hooks";
 
 const menu = [
   { label: "Dashboard", icon: Home },
@@ -14,8 +16,17 @@ const menu = [
 ];
 
 export default function AppSidebar() {
+  const router = useRouter();
+  const logout = useLogout();
   const [expanded, setExpanded] = useState(false);
   const [active, setActive] = useState("Dashboard");
+
+  const handleLogout = () => {
+    logout.mutate(undefined, {
+      onSuccess: () => router.push("/login"),
+      onError: () => router.push("/login"),
+    });
+  };
 
   return (
     <aside
@@ -72,16 +83,29 @@ export default function AppSidebar() {
         })}
       </nav>
 
-      {/* Profile */}
-      <div className="absolute bottom-6 left-0 w-full flex items-center gap-3 px-4">
-        <Image
-          src="/profile.png"
-          alt="Profile"
-          width={36}
-          height={36}
-          className="w-9 h-9 min-w-9 rounded-full object-cover"
-        />
-        {expanded && <span className="text-sm font-medium text-gray-700 truncate">Profile</span>}
+      {/* Bottom Section */}
+      <div className="absolute bottom-6 left-0 w-full space-y-4 px-4">
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          disabled={logout.isPending}
+          className="w-full flex items-center gap-3 text-[#B6B6B6] hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <LogOut className="w-5 h-5 min-w-5" />
+          {expanded && <span className="text-sm font-medium">Logout</span>}
+        </button>
+
+        {/* Profile */}
+        <div className="flex items-center gap-3">
+          <Image
+            src="/profile.png"
+            alt="Profile"
+            width={36}
+            height={36}
+            className="w-9 h-9 min-w-9 rounded-full object-cover"
+          />
+          {expanded && <span className="text-sm font-medium text-gray-700 truncate">Profile</span>}
+        </div>
       </div>
     </aside>
   );

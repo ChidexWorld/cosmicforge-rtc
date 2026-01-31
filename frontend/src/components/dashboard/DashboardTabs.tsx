@@ -14,7 +14,7 @@ export default function DashboardTabs({
   const [active, setActive] = useState("Dashboard");
 
   return (
-    <div className="flex gap-6 border-b px-8">
+    <div className="flex gap-3 sm:gap-4 md:gap-6 border-b px-4 sm:px-6 md:px-8 overflow-x-auto">
       {tabs.map((tab) => (
         <Button
           key={tab}
@@ -24,7 +24,7 @@ export default function DashboardTabs({
             onChange(tab);
           }}
           className={cn(
-            "py-4 text-sm font-medium relative rounded-none",
+            "py-3 sm:py-4 text-xs sm:text-sm font-medium relative rounded-none whitespace-nowrap",
             active === tab ? "text-[#029CD4]" : "text-gray-400",
           )}
         >

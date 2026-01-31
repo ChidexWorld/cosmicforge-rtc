@@ -10,9 +10,12 @@ interface AuthInputProps {
   type?: string;
   placeholder?: string;
   id?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
 }
 
-const AuthInput = ({ label, type = "text", placeholder, id }: AuthInputProps) => {
+const AuthInput = ({ label, type = "text", placeholder, id, value, onChange, error }: AuthInputProps) => {
   const inputId = id || label.toLowerCase().replace(/\s+/g, "-");
   const isPassword = type === "password";
   const [showPassword, setShowPassword] = useState(false);
@@ -25,7 +28,9 @@ const AuthInput = ({ label, type = "text", placeholder, id }: AuthInputProps) =>
           id={inputId}
           type={isPassword && showPassword ? "text" : type}
           placeholder={placeholder}
-          className={isPassword ? "pr-12" : ""}
+          value={value}
+          onChange={onChange}
+          className={`${isPassword ? "pr-12" : ""} ${error ? "border-red-500" : ""}`}
         />
         {isPassword && (
           <button
@@ -38,6 +43,7 @@ const AuthInput = ({ label, type = "text", placeholder, id }: AuthInputProps) =>
           </button>
         )}
       </div>
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
 };

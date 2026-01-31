@@ -87,6 +87,7 @@ pub struct UserInfo {
     pub id: Uuid,
     pub username: String,
     pub role: String,
+    pub status: String,
 }
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
@@ -151,3 +152,19 @@ fn validate_reset_passwords(req: &ResetPasswordRequest) -> Result<(), Validation
 
     Ok(())
 }
+
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct VerifyResetTokenRequest {
+    #[validate(email(message = "Invalid email address"))]
+    pub email: String,
+
+    #[validate(regex(path = *VERIFICATION_CODE_REGEX, message = "Reset token must be 6 digits"))]
+    pub token: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VerifyResetTokenResponse {
+    pub message: String,
+    pub valid: bool,
+}
+

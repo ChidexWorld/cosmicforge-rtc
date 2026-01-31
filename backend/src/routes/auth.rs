@@ -13,6 +13,7 @@ pub fn auth_routes() -> Router<AppState> {
             post(auth::resend_verification_email),
         )
         .route("/forgot-password", post(auth::forgot_password))
+        .route("/verify-reset-token", post(auth::verify_reset_token))
         .route("/reset-password", post(auth::reset_password))
         // OAuth routes
         .route("/oauth/google", get(auth::oauth_google_init))
