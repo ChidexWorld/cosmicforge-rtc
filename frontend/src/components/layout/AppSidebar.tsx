@@ -3,23 +3,23 @@
 import { useState } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Home, Video, Calendar, MessageSquare, Settings, ChevronRight, ChevronLeft, LogOut } from "lucide-react";
 import { useLogout } from "@/hooks";
 
 const menu = [
-  { label: "Dashboard", icon: Home },
-  { label: "Meetings", icon: Video },
-  { label: "Schedule", icon: Calendar },
-  { label: "Messages", icon: MessageSquare },
-  { label: "Settings", icon: Settings },
+  { label: "Dashboard", icon: Home, href: "/dashboard" },
+  { label: "Meetings", icon: Video, href: "/dashboard/meetings" },
+  { label: "Schedule", icon: Calendar, href: "/dashboard/schedule" },
+  { label: "Messages", icon: MessageSquare, href: "/dashboard/messages" },
+  { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 export default function AppSidebar() {
   const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
   const [expanded, setExpanded] = useState(false);
-  const [active, setActive] = useState("Dashboard");
 
   const handleLogout = () => {
     logout.mutate(undefined, {
@@ -58,13 +58,16 @@ export default function AppSidebar() {
 
       {/* Nav */}
       <nav className="mt-6 space-y-2">
-        {menu.map(({ label, icon: Icon }) => {
-          const isActive = active === label;
+        {menu.map(({ label, icon: Icon, href }) => {
+          const isActive =
+            href === "/dashboard"
+              ? pathname === "/dashboard"
+              : pathname.startsWith(href);
 
           return (
             <button
               key={label}
-              onClick={() => setActive(label)}
+              onClick={() => router.push(href)}
               className={cn(
                 "relative w-full flex items-center gap-3 px-4 py-3 transition-colors",
                 isActive ? "text-[#029CD4]" : "text-[#B6B6B6]",

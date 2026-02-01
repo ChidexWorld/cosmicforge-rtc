@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Home,
@@ -17,18 +17,18 @@ import {
 import { useLogout } from "@/hooks";
 
 const menu = [
-  { label: "Dashboard", icon: Home },
-  { label: "Meetings", icon: Video },
-  { label: "Schedule", icon: Calendar },
-  { label: "Messages", icon: MessageSquare },
-  { label: "Settings", icon: Settings },
+  { label: "Dashboard", icon: Home, href: "/dashboard" },
+  { label: "Meetings", icon: Video, href: "/dashboard/meetings" },
+  { label: "Schedule", icon: Calendar, href: "/dashboard/schedule" },
+  { label: "Messages", icon: MessageSquare, href: "/dashboard/messages" },
+  { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 export default function MobileSidebar() {
   const router = useRouter();
+  const pathname = usePathname();
   const logout = useLogout();
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState("Dashboard");
 
   const handleLogout = () => {
     logout.mutate(undefined, {
@@ -91,13 +91,16 @@ export default function MobileSidebar() {
 
           {/* Nav */}
           <nav className="mt-6 space-y-1 flex-1">
-            {menu.map(({ label, icon: Icon }) => {
-              const isActive = active === label;
+            {menu.map(({ label, icon: Icon, href }) => {
+              const isActive =
+                href === "/dashboard"
+                  ? pathname === "/dashboard"
+                  : pathname.startsWith(href);
               return (
                 <button
                   key={label}
                   onClick={() => {
-                    setActive(label);
+                    router.push(href);
                     setOpen(false);
                   }}
                   className={cn(

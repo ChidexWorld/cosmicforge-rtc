@@ -46,6 +46,6 @@ impl AppState {
 
     /// Generate join URL for a meeting
     pub fn join_url(&self, meeting_identifier: &str) -> String {
-        format!("{}/join/{}", self.app_url, meeting_identifier)
+        format!("{}/{}", self.app_url, meeting_identifier)
     }
 }

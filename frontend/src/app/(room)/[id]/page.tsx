@@ -4,9 +4,15 @@ import { useState } from "react";
 import VideoGrid from "@/components/room/video-grid";
 import Sidebar from "@/components/room/sidebar";
 import FooterControls from "@/components/room/footer-controls";
+import PreJoinScreen from "@/components/room/pre-join-screen";
 
 export default function RoomPage({ params }: { params: { id: string } }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [hasJoined, setHasJoined] = useState(false);
+
+  if (!hasJoined) {
+    return <PreJoinScreen roomId={params.id} onJoin={() => setHasJoined(true)} />;
+  }
 
   return (
     <div className="flex h-screen bg-white overflow-hidden">

@@ -12,7 +12,7 @@ export const cookieStore = {
     }
 
     const persist = this.getRememberMe();
-
+// Set cookies with appropriate expiration based on rememberMe
     if (persist) {
       // Persistent: access token 15 min, refresh token 7 days
       Cookies.set(ACCESS_TOKEN_KEY, accessToken, {

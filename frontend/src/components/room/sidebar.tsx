@@ -6,6 +6,9 @@ import {
   Paperclip,
   Send,
   Pencil,
+  Check,
+  X,
+  Clock,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -26,6 +29,9 @@ export default function Sidebar() {
           <ParticipantItem name="Janet Adeyemi" isMuted />
         </div>
       </div>
+
+      {/* Waiting Room */}
+      <WaitingRoom />
 
       {/* Chat Room */}
       <div className="flex-1 flex flex-col rounded-xl shadow-[0_8px_24px_rgba(2,156,212,0.08)] mt-4 mb-6 bg-[#FFFFFF]">
@@ -84,6 +90,60 @@ export default function Sidebar() {
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const WAITING_USERS = [
+  { id: 1, name: "Samuel Okafor" },
+  { id: 2, name: "Grace Ojo" },
+  { id: 3, name: "Emeka Nwosu" },
+];
+
+function WaitingRoom() {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-[#343434] flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-[#029CD4]" />
+          Waiting Room{" "}
+          <span className="text-[#00000080]">({WAITING_USERS.length})</span>
+        </h3>
+        <button className="text-xs text-[#029CD4] font-medium hover:underline">
+          Admit All
+        </button>
+      </div>
+
+      <div className="space-y-2 py-2">
+        {WAITING_USERS.map((user) => (
+          <WaitingRoomItem key={user.id} name={user.name} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WaitingRoomItem({ name }: { name: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Avatar className="h-8 w-8">
+          <AvatarImage
+            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
+          />
+          <AvatarFallback>{name[0]}</AvatarFallback>
+        </Avatar>
+        <span className="text-sm font-medium text-[#00000080]">{name}</span>
+      </div>
+
+      <div className="flex gap-1.5 items-center">
+        <button className="w-7 h-7 rounded-full flex items-center justify-center bg-[#029CD4] hover:bg-[#028AC0] text-white transition">
+          <Check className="w-3.5 h-3.5" />
+        </button>
+        <button className="w-7 h-7 rounded-full flex items-center justify-center bg-gray-100 hover:bg-red-100 text-gray-400 hover:text-red-500 transition">
+          <X className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );
