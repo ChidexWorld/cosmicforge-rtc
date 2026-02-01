@@ -1,45 +1,85 @@
-import { MoreVertical, Mic, Video, Paperclip, Send } from "lucide-react";
+import {
+  MoreVertical,
+  Mic,
+  MicOff,
+  Video,
+  Paperclip,
+  Send,
+  Pencil,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 
 export default function Sidebar() {
   return (
-    <div className="flex flex-col h-full p-4 space-y-6">
-      {/* Participants Section */}
+    <div className="flex flex-col h-full px-6 py-6 space-y-5 bg-white rounded-3xl shadow-sm bg-green-500">
+      {/* Participants */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-700">Participant (2)</h3>
-          <MoreVertical className="w-4 h-4 text-gray-400 cursor-pointer" />
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-[#343434]">
+            Participant <span className="text-[#00000080]">(2)</span>
+          </h3>
+          <MoreVertical className="w-4 h-4 text-[#0F0F0F] cursor-pointer" />
         </div>
-        <div className="space-y-4">
+
+        <div className="space-y-3 py-4">
           <ParticipantItem name="Abubakar Teslim" role="Host" isMuted={false} />
-          <ParticipantItem name="Janet Adeyemi" isMuted={true} />
+          <ParticipantItem name="Janet Adeyemi" isMuted />
         </div>
       </div>
 
-      {/* Chat Room Section */}
-      <div className="flex-1 flex flex-col border rounded-xl bg-gray-50/50">
-        <div className="p-3 border-b flex justify-between items-center bg-white rounded-t-xl">
+      {/* Chat Room */}
+      <div className="flex-1 flex flex-col rounded-xl shadow-[0_8px_24px_rgba(2,156,212,0.08)] mt-4 mb-6 bg-[#FFFFFF]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white rounded-t-2xl border-b">
           <span className="text-sm font-medium text-gray-600">Chat Room</span>
         </div>
 
-        <div className="flex-1 p-3 overflow-y-auto space-y-4">
-          <p className="text-xs text-center text-blue-500 italic">
+        {/* Messages */}
+        <div className="flex-1 px-4 py-3 space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-center gap-1 text-xs text-purple-500 italic">
+            <Pencil className="w-3 h-3" />
             Janet is Typing...
-          </p>
-          {/* Messages would map here */}
+          </div>
+
+          {/* Left message */}
+          <div className="flex gap-2 items-end">
+            <Avatar className="w-6 h-6">
+              <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=janet" />
+            </Avatar>
+            <div className="bg-white px-3 py-2 rounded-xl text-xs text-gray-700 shadow">
+              Can u hear my voice
+            </div>
+          </div>
+
+          {/* Right message */}
+          <div className="flex justify-end">
+            <div className="bg-sky-500 text-white px-3 py-2 rounded-xl text-xs">
+              Ok wait, 5 min
+            </div>
+          </div>
+
+          {/* Left message */}
+          <div className="flex gap-2 items-end">
+            <Avatar className="w-6 h-6">
+              <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=janet" />
+            </Avatar>
+            <div className="bg-white px-3 py-2 rounded-xl text-xs text-gray-700 shadow">
+              Thanks ...
+            </div>
+          </div>
         </div>
 
-        <div className="p-3 bg-white border-t rounded-b-xl">
+        {/* Input */}
+        <div className="px-2 py-2 bg-white rounded-b-2xl">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <Input
+              <Paperclip className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+              <input
                 placeholder="Type here..."
-                className="pl-10 bg-gray-100 rounded-full text-sm"
+                className="pl-7 h-9 bg-gray-100 rounded-full text-sm"
               />
             </div>
-            <button className="p-2 bg-sky-500 rounded-full text-white shrink-0">
+            <button className="w-9 h-9 rounded-full flex items-center justify-center text-white bg-[#029CD4] hover:bg-[#028AC0] active:scale-95 transition">
               <Send className="w-4 h-4" />
             </button>
           </div>
@@ -65,22 +105,20 @@ function ParticipantItem({
           <AvatarImage
             src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
           />
-          <AvatarFallback>AT</AvatarFallback>
+          <AvatarFallback>{name[0]}</AvatarFallback>
         </Avatar>
-        <span className="text-sm text-gray-600 font-medium">{name}</span>
-        {role && (
-          <span className="text-[10px] text-sky-500 font-bold ml-1">
-            {role}
-          </span>
-        )}
+
+        <span className="text-base font-medium text-[#00000080]">{name}</span>
       </div>
-      <div className="flex gap-2">
+
+      <div className="flex gap-2 items-center">
+        {role && <span className="text-base text-[#029CD4] ml-1">{role}</span>}
         {isMuted ? (
-          <Mic className="w-4 h-4 text-gray-300" />
+          <MicOff className="w-4 h-4 text-[#DCDFE3]" />
         ) : (
-          <Mic className="w-4 h-4 text-sky-500" />
+          <Mic className="w-4 h-4 text-[#029CD4]" />
         )}
-        <Video className="w-4 h-4 text-sky-500" />
+        <Video className="w-4 h-4 text-[#029CD4]" />
       </div>
     </div>
   );

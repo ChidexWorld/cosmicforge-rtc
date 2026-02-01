@@ -6,29 +6,29 @@ import Sidebar from "@/components/room/sidebar";
 import FooterControls from "@/components/room/footer-controls";
 
 export default function RoomPage({ params }: { params: { id: string } }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   return (
-    <div className="flex flex-col h-screen bg-white overflow-hidden">
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-screen bg-white overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-hidden">
         {/* Main Video Area */}
-        <main className={`flex-1 transition-all duration-300 ease-in-out`}>
+        <main className="flex-1 overflow-hidden transition-all duration-300 ease-in-out">
           <VideoGrid />
         </main>
 
-        {/* Conditional Sidebar */}
-        {isSidebarOpen && (
-          <aside className="w-80 border-l border-gray-100 flex flex-col h-full transition-all duration-300">
-            <Sidebar />
-          </aside>
-        )}
+        {/* Footer Controls */}
+        <FooterControls
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          isSidebarOpen={isSidebarOpen}
+        />
       </div>
 
-      {/* Footer Controls */}
-      <FooterControls
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        isSidebarOpen={isSidebarOpen}
-      />
+      {/* Conditional Sidebar - full height */}
+      {isSidebarOpen && (
+        <aside className="w-80  flex flex-col h-full transition-all duration-300">
+          <Sidebar />
+        </aside>
+      )}
     </div>
   );
 }

@@ -9,10 +9,15 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 
+interface FooterControlsProps {
+  onToggleSidebar: () => void;
+  isSidebarOpen: boolean;
+}
+
 export default function FooterControls({
   onToggleSidebar,
   isSidebarOpen,
-}: any) {
+}: FooterControlsProps) {
   return (
     <footer className="p-6 flex items-center justify-center gap-4 bg-white">
       <div style={{ width: "60%" }} className="flex items-center justify-between rounded-lg gap-4 px-6">

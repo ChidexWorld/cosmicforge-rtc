@@ -1,25 +1,45 @@
 import { MicOff, ShieldCheck } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
+const COLORS = [
+  "bg-orange-100",
+  "bg-blue-400",
+  "bg-green-500",
+  "bg-purple-200",
+  "bg-purple-300",
+  "bg-yellow-400",
+  "bg-sky-300",
+  "bg-orange-200",
+  "bg-blue-50",
+  "bg-pink-400",
+  "bg-teal-300",
+  "bg-rose-200",
+  "bg-indigo-300",
+  "bg-amber-200",
+  "bg-emerald-300",
+  "bg-cyan-200",
+] as const;
+
+function getRandomColor(id: number): string {
+  // Use a seeded approach based on id so colors are stable across re-renders
+  const seed = id * 2654435761; // Knuth multiplicative hash
+  const index = Math.abs(seed) % COLORS.length;
+  return COLORS[index];
+}
+
 const PARTICIPANTS = [
-  { id: 1, name: "Natura", muted: false, color: "bg-orange-100" },
-  {
-    id: 2,
-    name: "Cecile",
-    muted: false,
-    isVerified: true,
-    color: "bg-blue-400",
-  },
-  { id: 3, name: "Nico", muted: false, color: "bg-green-500" },
-  { id: 4, name: "Bryan", muted: true, color: "bg-purple-200" },
-  { id: 5, name: "Azzura", muted: true, color: "bg-purple-300" },
-  { id: 6, name: "Ahmed", muted: true, color: "bg-yellow-400" },
-  { id: 7, name: "Marry", muted: false, color: "bg-sky-300" },
-  { id: 8, name: "Diana", muted: false, color: "bg-orange-200" },
-  { id: 9, name: "Lucas", muted: false, color: "bg-blue-50" },
-  { id: 10, name: "Mike", muted: true, color: "bg-pink-400" },
-  { id: 11, name: "Daniel", muted: true, color: "bg-orange-100" },
-  { id: 12, name: "Shandy", muted: true, color: "bg-pink-300" },
+  { id: 1, name: "Natura", muted: false },
+  { id: 2, name: "Cecile", muted: false, isVerified: true },
+  { id: 3, name: "Nico", muted: false },
+  { id: 4, name: "Bryan", muted: true },
+  { id: 5, name: "Azzura", muted: true },
+  { id: 6, name: "Ahmed", muted: true },
+  { id: 7, name: "Marry", muted: false },
+  { id: 8, name: "Diana", muted: false },
+  { id: 9, name: "Lucas", muted: false },
+  { id: 10, name: "Mike", muted: true },
+  { id: 11, name: "Daniel", muted: true },
+  { id: 12, name: "Shandy", muted: true },
 ];
 
 export default function VideoGrid() {
@@ -37,7 +57,7 @@ export default function VideoGrid() {
                 borderRadius: "8px",
                 borderWidth: "1px",
               }}
-              className={`relative overflow-hidden shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02] border-[#272EA766] ${user.color}`}
+              className={`relative overflow-hidden shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02] border-[#272EA766] ${getRandomColor(user.id)}`}
             >
               {/* Participant Placeholder / Video Stream */}
               <div className="relative w-full h-full flex items-center justify-center">

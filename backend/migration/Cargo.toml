@@ -12,6 +12,10 @@ path = "src/lib.rs"
 name = "migration"
 path = "src/main.rs"
 
+[[bin]]
+name = "test_connection"
+path = "test_connection.rs"
+
 [dependencies]
 async-std = { version = "1.12", features = ["attributes", "tokio1"] }
 async-trait = "0.1"

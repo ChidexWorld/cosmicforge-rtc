@@ -1,4 +1,4 @@
-use sea_orm::Database;
+use sea_orm_migration::sea_orm::Database;
 
 #[async_std::main]
 async fn main() {
