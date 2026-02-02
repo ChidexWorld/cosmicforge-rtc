@@ -23,7 +23,7 @@ use crate::{
     },
     services::auth::Claims,
     state::AppState,
-    utils::{format_participant_status, format_role, now_naive},
+    utils::{format_participant_status, format_role, format_utc, format_utc_opt, now_utc},
 };
 
 // ============================================================================
@@ -97,8 +97,8 @@ pub async fn list_participants(
             role: format_role(&p.role),
             display_name: p.display_name,
             status: format_participant_status(&p.status),
-            join_time: p.join_time,
-            leave_time: p.leave_time,
+            join_time: format_utc(p.join_time),
+            leave_time: format_utc_opt(p.leave_time),
             is_muted: p.is_muted,
             is_video_on: p.is_video_on,
             is_screen_sharing: p.is_screen_sharing,
@@ -163,7 +163,7 @@ pub async fn kick_participant(
     }
 
     // Update participant status to kicked
-    let now = now_naive();
+    let now = now_utc();
     let mut participant_update: participants::ActiveModel = participant.clone().into();
     participant_update.status = Set(ParticipantStatus::Kicked);
     participant_update.leave_time = Set(Some(now));
@@ -245,7 +245,7 @@ pub async fn list_waiting_participants(
             participant_id: p.id,
             user_id: p.user_id,
             display_name: p.display_name,
-            join_time: p.join_time,
+            join_time: format_utc(p.join_time),
         })
         .collect();
 
@@ -314,7 +314,7 @@ pub async fn admit_participant(
     participant_update.update(&state.db).await?;
 
     // Log the admit event
-    let now = now_naive();
+    let now = now_utc();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),
@@ -388,7 +388,7 @@ pub async fn deny_participant(
     }
 
     // Deny participant (change status to kicked and set leave time)
-    let now = now_naive();
+    let now = now_utc();
     let mut participant_update: participants::ActiveModel = participant.clone().into();
     participant_update.status = Set(ParticipantStatus::Kicked);
     participant_update.leave_time = Set(Some(now));
@@ -474,7 +474,7 @@ pub async fn update_audio(
     let updated_participant = participant_update.update(&state.db).await?;
 
     // Log the media toggle event
-    let now = now_naive();
+    let now = now_utc();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(participant.meeting_id),
@@ -554,7 +554,7 @@ pub async fn update_video(
     let updated_participant = participant_update.update(&state.db).await?;
 
     // Log the media toggle event
-    let now = now_naive();
+    let now = now_utc();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(participant.meeting_id),
@@ -648,7 +648,7 @@ pub async fn start_screen_share(
     participant_update.update(&state.db).await?;
 
     // Log the screen share start event
-    let now = now_naive();
+    let now = now_utc();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),
@@ -725,7 +725,7 @@ pub async fn stop_screen_share(
     participant_update.update(&state.db).await?;
 
     // Log the screen share stop event
-    let now = now_naive();
+    let now = now_utc();
     let session_log = session_logs::ActiveModel {
         id: Set(Uuid::new_v4()),
         meeting_id: Set(meeting_id),

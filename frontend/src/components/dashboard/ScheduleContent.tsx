@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import type { ApiErrorResponse } from "@/types/auth";
 import type { AxiosError } from "axios";
 import { Calendar, Clock, Lock, Globe, CheckCircle } from "lucide-react";
+import { getUserTimezone } from "@/utils/timezone";
 
 export default function ScheduleContent() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function ScheduleContent() {
     meeting_identifier: string;
     join_url: string;
   } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +54,7 @@ export default function ScheduleContent() {
         title: title.trim(),
         start_time,
         end_time,
+        timezone: getUserTimezone(),
         is_private: isPrivate,
         metadata: metadata.trim() || undefined,
       },
@@ -73,8 +76,6 @@ export default function ScheduleContent() {
 
   // Success state
   if (created) {
-    const [copied, setCopied] = useState(false);
-
     const handleCopy = () => {
       navigator.clipboard.writeText(created.join_url);
       setCopied(true);
@@ -136,6 +137,7 @@ export default function ScheduleContent() {
               variant="ghost"
               onClick={() => {
                 setCreated(null);
+                setCopied(false);
                 setTitle("");
                 setDate("");
                 setStartTime("");

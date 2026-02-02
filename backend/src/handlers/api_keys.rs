@@ -20,7 +20,7 @@ use crate::{
     models::api_keys::{self, ApiKeyStatus, Entity as ApiKeys},
     services::auth::Claims,
     state::AppState,
-    utils::now_naive,
+    utils::now_utc,
 };
 
 /// Generate a secure random API key
@@ -77,7 +77,7 @@ pub async fn create_api_key(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    let now = now_naive();
+    let now = now_utc();
 
     // System-controlled defaults
     const DEFAULT_USAGE_LIMIT: i32 = 100;
@@ -252,7 +252,7 @@ pub async fn revoke_api_key(
 
     let mut api_key: api_keys::ActiveModel = api_key.into();
     api_key.status = Set(ApiKeyStatus::Revoked);
-    api_key.updated_at = Set(now_naive());
+    api_key.updated_at = Set(now_utc());
     api_key.update(&state.db).await?;
 
     Ok(Json(RevokeApiKeyResponse {

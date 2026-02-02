@@ -25,6 +25,7 @@ export interface CreateMeetingRequest {
   title: string;
   start_time: string;
   end_time: string;
+  timezone: string;
   is_private: boolean;
   metadata?: string;
 }
@@ -43,6 +44,7 @@ export interface UpdateMeetingRequest {
   title?: string;
   start_time?: string;
   end_time?: string;
+  timezone?: string;
   is_private?: boolean;
   metadata?: string;
 }

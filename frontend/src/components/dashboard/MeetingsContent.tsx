@@ -22,6 +22,13 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import {
+  getUserTimezone,
+  formatShortDateForDisplay,
+  formatTimeForDisplay,
+  toLocalDateValue,
+  toLocalTimeValue,
+} from "@/utils/timezone";
 
 const STATUS_FILTERS: { label: string; value: MeetingStatus | "all" }[] = [
   { label: "All", value: "all" },
@@ -38,25 +45,6 @@ const STATUS_STYLES: Record<MeetingStatus, string> = {
   cancelled: "bg-red-50 text-red-500",
 };
 
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTime(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
 function getDuration(start: string, end: string) {
   const ms = new Date(end).getTime() - new Date(start).getTime();
   const mins = Math.round(ms / 60000);
@@ -64,15 +52,6 @@ function getDuration(start: string, end: string) {
   const hrs = Math.floor(mins / 60);
   const rem = mins % 60;
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
-}
-
-function toDateValue(dateStr: string) {
-  return dateStr.slice(0, 10);
-}
-
-function toTimeValue(dateStr: string) {
-  const d = new Date(dateStr);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 export default function MeetingsContent() {
@@ -245,11 +224,11 @@ function MeetingCard({
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[#00000080] text-xs sm:text-sm">
             <span className="flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5" />
-              {formatDate(meeting.start_time)}
+              {formatShortDateForDisplay(meeting.start_time)}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              {formatTime(meeting.start_time)} – {formatTime(meeting.end_time)}
+              {formatTimeForDisplay(meeting.start_time)} – {formatTimeForDisplay(meeting.end_time)}
             </span>
             <span className="flex items-center gap-1">
               <Video className="w-3.5 h-3.5" />
@@ -331,9 +310,9 @@ function EditMeetingModal({
   const updateMeeting = useUpdateMeeting();
 
   const [title, setTitle] = useState(meeting.title);
-  const [date, setDate] = useState(toDateValue(meeting.start_time));
-  const [startTime, setStartTime] = useState(toTimeValue(meeting.start_time));
-  const [endTime, setEndTime] = useState(toTimeValue(meeting.end_time));
+  const [date, setDate] = useState(toLocalDateValue(meeting.start_time));
+  const [startTime, setStartTime] = useState(toLocalTimeValue(meeting.start_time));
+  const [endTime, setEndTime] = useState(toLocalTimeValue(meeting.end_time));
   const [isPrivate, setIsPrivate] = useState(meeting.is_private);
   const [metadata, setMetadata] = useState(meeting.metadata || "");
   const [error, setError] = useState("");
@@ -366,6 +345,7 @@ function EditMeetingModal({
           title: title.trim(),
           start_time,
           end_time,
+          timezone: getUserTimezone(),
           is_private: isPrivate,
           metadata: metadata.trim() || undefined,
         },

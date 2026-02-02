@@ -8,24 +8,7 @@ import { Video, Calendar, MoreVertical, Plus, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useMeetings } from "@/hooks";
 import type { Meeting } from "@/types/meeting";
-
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function formatTime(dateStr: string) {
-  const date = new Date(dateStr);
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
+import { formatDateForDisplay, formatTimeForDisplay } from "@/utils/timezone";
 
 export default function DashboardContent() {
   const router = useRouter();
@@ -125,10 +108,10 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
 
       <div className="space-y-1">
         <p className="text-[#00000080] font-normal text-[11px] sm:text-[12px] leading-none">
-          {formatDate(meeting.start_time)}
+          {formatDateForDisplay(meeting.start_time)}
         </p>
         <p className="text-[#00000080] font-normal text-[11px] sm:text-[12px] leading-none">
-          {formatTime(meeting.start_time)}
+          {formatTimeForDisplay(meeting.start_time)}
         </p>
       </div>
 

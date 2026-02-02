@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::models::email_jobs::{self, ActiveModel, EmailJobStatus, Entity as EmailJobs};
-use crate::utils::now_naive;
+use crate::utils::now_utc;
 
 /// Default maximum retry attempts
 pub const DEFAULT_MAX_RETRIES: i32 = 3;
@@ -92,7 +92,7 @@ impl EmailQueue {
             return Ok(existing.id);
         }
 
-        let now = now_naive();
+        let now = now_utc();
         let job_id = Uuid::new_v4();
 
         let job = ActiveModel {

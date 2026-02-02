@@ -23,7 +23,7 @@ use sea_orm::{
 use tokio::sync::watch;
 use tokio::time::{sleep, Duration};
 
-use crate::utils::now_naive;
+use crate::utils::now_utc;
 use crate::models::{
     chat_messages::{self, Entity as ChatMessages},
     meetings::{self, Entity as Meetings, MeetingStatus},
@@ -92,7 +92,7 @@ impl MeetingAutoEndWorker {
 
     /// Process a batch of meetings that should be auto-ended
     async fn process_batch(&self) -> Result<(), String> {
-        let now = now_naive();
+        let now = now_utc();
 
         // Find ongoing meetings that have passed their scheduled end time
         let meetings = Meetings::find()
@@ -126,7 +126,7 @@ impl MeetingAutoEndWorker {
     async fn end_meeting(&self, meeting: meetings::Model) -> Result<(), String> {
         let meeting_id = meeting.id;
         let meeting_identifier = meeting.meeting_identifier.clone();
-        let now = now_naive();
+        let now = now_utc();
 
         // Update meeting status to ended
         let mut meeting_update: meetings::ActiveModel = meeting.into();

@@ -9,7 +9,7 @@ use crate::{
     models::users::{self, Entity as Users},
     services::auth::{generate_verification_code, hash_password, verify_password},
     state::AppState,
-    utils::now_naive,
+    utils::now_utc,
 };
 
 /// Register a new user
@@ -62,7 +62,7 @@ pub async fn register(
 
     // Generate verification token
     let verification_token = generate_verification_code();
-    let token_expires_at = now_naive() + chrono::Duration::hours(24);
+    let token_expires_at = now_utc() + chrono::Duration::hours(24);
 
     // Create user
     let user = users::ActiveModel {
@@ -75,8 +75,8 @@ pub async fn register(
         status: Set(users::UserStatus::PendingVerification),
         verification_token: Set(Some(verification_token.clone())),
         token_expires_at: Set(Some(token_expires_at)),
-        created_at: Set(now_naive()),
-        updated_at: Set(now_naive()),
+        created_at: Set(now_utc()),
+        updated_at: Set(now_utc()),
         last_login: Set(None),
         reset_token: Set(None),
         reset_token_expires_at: Set(None),
@@ -148,7 +148,7 @@ pub async fn verify_email(
 
     // Check if token is expired
     if let Some(expires_at) = user.token_expires_at {
-        if expires_at < now_naive() {
+        if expires_at < now_utc() {
             return Err(ApiError::BadRequest(
                 "Verification token has expired".to_string(),
             ));
@@ -160,7 +160,7 @@ pub async fn verify_email(
     user.status = Set(users::UserStatus::Active);
     user.verification_token = Set(None);
     user.token_expires_at = Set(None);
-    user.updated_at = Set(now_naive());
+    user.updated_at = Set(now_utc());
 
     user.update(&state.db).await?;
 
@@ -227,7 +227,7 @@ pub async fn login(
 
     // Update last login
     let mut user_active: users::ActiveModel = user.clone().into();
-    user_active.last_login = Set(Some(now_naive()));
+    user_active.last_login = Set(Some(now_utc()));
     user_active.update(&state.db).await?;
 
     let response = LoginResponse {
@@ -335,7 +335,7 @@ pub async fn resend_verification_email(
 
     // Generate new token
     let verification_token = generate_verification_code();
-    let token_expires_at = now_naive() + chrono::Duration::hours(24);
+    let token_expires_at = now_utc() + chrono::Duration::hours(24);
 
     let mut active_user: users::ActiveModel = user.clone().into();
     active_user.verification_token = Set(Some(verification_token.clone()));
@@ -395,12 +395,12 @@ pub async fn forgot_password(
 
     // Generate 6-digit reset code
     let reset_code = generate_verification_code();
-    let expires_at = now_naive() + chrono::Duration::hours(1);
+    let expires_at = now_utc() + chrono::Duration::hours(1);
 
     let mut active_user: users::ActiveModel = user.clone().into();
     active_user.reset_token = Set(Some(reset_code.clone()));
     active_user.reset_token_expires_at = Set(Some(expires_at));
-    active_user.updated_at = Set(now_naive());
+    active_user.updated_at = Set(now_utc());
     active_user.update(&state.db).await?;
 
     // Queue reset email
@@ -463,7 +463,7 @@ pub async fn reset_password(
     }
 
     if let Some(expires_at) = user.reset_token_expires_at {
-        if expires_at < now_naive() {
+        if expires_at < now_utc() {
             return Err(ApiError::BadRequest("Reset token has expired".to_string()));
         }
     } else {
@@ -476,7 +476,7 @@ pub async fn reset_password(
     user.password_hash = Set(Some(password_hash));
     user.reset_token = Set(None);
     user.reset_token_expires_at = Set(None);
-    user.updated_at = Set(now_naive());
+    user.updated_at = Set(now_utc());
 
     user.update(&state.db).await?;
 
@@ -523,7 +523,7 @@ pub async fn verify_reset_token(
 
     // Check if token is expired
     if let Some(expires_at) = user.reset_token_expires_at {
-        if expires_at < now_naive() {
+        if expires_at < now_utc() {
             return Err(ApiError::BadRequest("Reset token has expired".to_string()));
         }
     } else {

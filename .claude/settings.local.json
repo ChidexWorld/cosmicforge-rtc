@@ -14,7 +14,9 @@
       "Bash(npx tsc:*)",
       "Bash(ls:*)",
       "Bash(powershell:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(tree:*)",
+      "Bash(npx next build:*)"
     ]
   }
 }

@@ -1,28 +1,46 @@
 //! DateTime utilities
 //!
-//! Simple passthrough - no timezone conversions.
-//! Input "2026-01-25T14:00:00" outputs "2026-01-25T14:00:00".
+//! All times are stored and processed in UTC.
+//! Frontend sends the user's IANA timezone (e.g., "Africa/Lagos") with requests.
+//! This module converts local times to UTC for storage and provides UTC helpers.
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
+use chrono_tz::Tz;
 
-/// Get current time as NaiveDateTime (local system time)
-pub fn now_naive() -> NaiveDateTime {
+/// Get current time as NaiveDateTime in UTC
+pub fn now_utc() -> NaiveDateTime {
     Utc::now().naive_utc()
 }
 
-/// Convert NaiveDateTime to DateTime<Utc> - direct passthrough
-/// The naive datetime value is kept exactly as-is
-pub fn naive_to_utc(dt: NaiveDateTime) -> DateTime<Utc> {
-    DateTime::from_naive_utc_and_offset(dt, Utc)
+/// Convert a local NaiveDateTime to UTC using an IANA timezone string.
+///
+/// # Arguments
+/// * `local_time` - A NaiveDateTime representing the time in the user's local timezone
+/// * `timezone` - An IANA timezone string (e.g., "Africa/Lagos", "America/New_York")
+///
+/// # Returns
+/// * `Ok(NaiveDateTime)` - The equivalent UTC time
+/// * `Err(String)` - If the timezone string is invalid or the local time is ambiguous/invalid
+pub fn local_to_utc(local_time: NaiveDateTime, timezone: &str) -> Result<NaiveDateTime, String> {
+    let tz: Tz = timezone
+        .parse()
+        .map_err(|_| format!("Invalid timezone: {}", timezone))?;
+
+    local_time
+        .and_local_timezone(tz)
+        .earliest()
+        .map(|dt| dt.naive_utc())
+        .ok_or_else(|| format!("Invalid or ambiguous local time for timezone: {}", timezone))
 }
 
-/// Convert DateTime<Utc> to NaiveDateTime - direct passthrough
-/// The datetime value is kept exactly as-is
-pub fn utc_to_naive(dt: DateTime<Utc>) -> NaiveDateTime {
-    dt.naive_utc()
+/// Format a NaiveDateTime (assumed UTC) as an ISO 8601 string with Z suffix.
+///
+/// Example output: "2026-01-25T14:00:00Z"
+pub fn format_utc(dt: NaiveDateTime) -> String {
+    format!("{}Z", dt.format("%Y-%m-%dT%H:%M:%S"))
 }
 
-/// Parse input DateTime to NaiveDateTime - direct passthrough
-pub fn input_to_naive(dt: DateTime<Utc>) -> NaiveDateTime {
-    dt.naive_utc()
+/// Format an optional NaiveDateTime as a UTC string, or None.
+pub fn format_utc_opt(dt: Option<NaiveDateTime>) -> Option<String> {
+    dt.map(format_utc)
 }

@@ -9,7 +9,7 @@ use backend::{
     routes,
     state::AppState,
     swagger,
-    workers::{spawn_email_worker, spawn_meeting_auto_end_worker},
+    workers::{spawn_email_worker, spawn_meeting_auto_end_worker, spawn_meeting_auto_start_worker},
 };
 
 #[tokio::main]
@@ -81,6 +81,10 @@ async fn main() -> anyhow::Result<()> {
     // Start meeting auto-end worker (always runs)
     let _meeting_auto_end_worker = spawn_meeting_auto_end_worker(db.clone());
     tracing::info!("✅ Meeting auto-end worker started");
+
+    // Start meeting auto-start worker (always runs)
+    let _meeting_auto_start_worker = spawn_meeting_auto_start_worker(db.clone());
+    tracing::info!("✅ Meeting auto-start worker started");
 
     // Configure CORS
     let cors = CorsLayer::new()

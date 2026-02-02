@@ -2,11 +2,11 @@
 //!
 //! Data Transfer Objects for meeting-related API endpoints.
 //!
-//! Datetime values pass through as-is - no timezone conversion.
-//! Send times in format: "2026-01-25T14:00:00"
+//! All stored times are in UTC. Frontend sends the user's IANA timezone
+//! (e.g., "Africa/Lagos") and the backend converts to UTC before storage.
+//! All response times are formatted as UTC with Z suffix: "2026-01-25T14:00:00Z"
 
 use chrono::NaiveDateTime;
-// Note: No timezone conversions - input/output passes through exactly as provided
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use utoipa::ToSchema;
@@ -23,13 +23,17 @@ pub struct CreateMeetingRequest {
     ))]
     pub title: String,
 
-    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// Start time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T14:00:00")]
     pub start_time: NaiveDateTime,
 
-    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// End time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T15:00:00")]
     pub end_time: Option<NaiveDateTime>,
+
+    /// IANA timezone of the user (e.g., "Africa/Lagos", "America/New_York")
+    #[schema(example = "Africa/Lagos")]
+    pub timezone: String,
 
     #[serde(default)]
     pub is_private: Option<bool>,
@@ -47,13 +51,17 @@ pub struct UpdateMeetingRequest {
     ))]
     pub title: Option<String>,
 
-    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// Start time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T14:00:00")]
     pub start_time: Option<NaiveDateTime>,
 
-    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// End time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T15:00:00")]
     pub end_time: Option<NaiveDateTime>,
+
+    /// IANA timezone of the user (e.g., "Africa/Lagos"). Required when updating times.
+    #[schema(example = "Africa/Lagos")]
+    pub timezone: Option<String>,
 
     pub is_private: Option<bool>,
 
@@ -86,16 +94,16 @@ pub struct MeetingResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<JsonValue>,
     pub is_private: bool,
-    /// Start time. Format: "YYYY-MM-DDTHH:MM:SS"
-    pub start_time: NaiveDateTime,
-    /// End time. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// Start time in UTC. Format: "2026-01-25T14:00:00Z"
+    pub start_time: String,
+    /// End time in UTC. Format: "2026-01-25T15:00:00Z"
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_time: Option<NaiveDateTime>,
+    pub end_time: Option<String>,
     pub status: String,
     /// Join URL for the hosted UI (e.g., https://meet.cosmicforge.com/join/ABCD1234)
     pub join_url: String,
-    pub created_at: NaiveDateTime,
-    pub updated_at: NaiveDateTime,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// Participant response structure
@@ -108,7 +116,7 @@ pub struct ParticipantResponse {
     pub role: String,
     pub display_name: String,
     pub status: String,
-    pub join_time: NaiveDateTime,
+    pub join_time: String,
 }
 
 /// Response for joining a meeting (includes join token)
@@ -172,9 +180,11 @@ pub struct PublicMeetingInfoResponse {
     pub meeting_identifier: String,
     pub title: String,
     pub is_private: bool,
-    pub start_time: NaiveDateTime,
+    /// Start time in UTC. Format: "2026-01-25T14:00:00Z"
+    pub start_time: String,
+    /// End time in UTC. Format: "2026-01-25T15:00:00Z"
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_time: Option<NaiveDateTime>,
+    pub end_time: Option<String>,
     pub status: String,
     /// Join URL for the hosted UI
     pub join_url: String,
@@ -218,9 +228,9 @@ pub struct DetailedParticipantResponse {
     pub role: String,
     pub display_name: String,
     pub status: String,
-    pub join_time: NaiveDateTime,
+    pub join_time: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub leave_time: Option<NaiveDateTime>,
+    pub leave_time: Option<String>,
     pub is_muted: bool,
     pub is_video_on: bool,
     pub is_screen_sharing: bool,
@@ -251,7 +261,7 @@ pub struct WaitingParticipantResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
     pub display_name: String,
-    pub join_time: NaiveDateTime,
+    pub join_time: String,
 }
 
 /// Response for listing waiting participants
@@ -321,7 +331,7 @@ pub struct ChatMessageResponse {
     pub participant_id: Uuid,
     pub display_name: String,
     pub message: String,
-    pub created_at: NaiveDateTime,
+    pub created_at: String,
 }
 
 /// Response for sending a chat message
@@ -341,7 +351,7 @@ pub struct ChatMessagesListResponse {
 /// Query parameters for chat messages
 #[derive(Debug, Deserialize)]
 pub struct ChatMessagesQuery {
-    /// Filter messages after this timestamp. Format: "YYYY-MM-DDTHH:MM:SS"
+    /// Filter messages after this timestamp (UTC). Format: "YYYY-MM-DDTHH:MM:SS"
     pub after: Option<NaiveDateTime>,
     /// Limit number of messages (default: 100, max: 500)
     pub limit: Option<u64>,

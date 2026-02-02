@@ -28,7 +28,7 @@ use crate::{
     },
     services::auth::Claims,
     state::AppState,
-    utils::{format_duration, format_role, format_status, generate_meeting_identifier, now_naive},
+    utils::{format_duration, format_role, format_status, format_utc, format_utc_opt, generate_meeting_identifier, local_to_utc, now_utc},
 };
 
 /// List meetings for the authenticated user
@@ -99,12 +99,12 @@ pub async fn list_meetings(
                 title: m.title,
                 metadata: m.metadata,
                 is_private: m.is_private,
-                start_time: m.start_time,
-                end_time: m.end_time,
+                start_time: format_utc(m.start_time),
+                end_time: format_utc_opt(m.end_time),
                 status: format_status(&m.status),
                 join_url,
-                created_at: m.created_at,
-                updated_at: m.updated_at,
+                created_at: format_utc(m.created_at),
+                updated_at: format_utc(m.updated_at),
             }
         })
         .collect();
@@ -154,25 +154,35 @@ pub async fn create_meeting(
     let user_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
-    let now = now_naive();
+    // Convert local times to UTC using the provided timezone
+    let start_time_utc = local_to_utc(payload.start_time, &payload.timezone)
+        .map_err(|e| ApiError::ValidationError(e))?;
+
+    let end_time_utc = payload
+        .end_time
+        .map(|et| local_to_utc(et, &payload.timezone))
+        .transpose()
+        .map_err(|e| ApiError::ValidationError(e))?;
+
+    let now = now_utc();
 
     // Validate start time is in the future (at least 1 minute from now)
-    if payload.start_time <= now + chrono::Duration::minutes(1) {
+    if start_time_utc <= now + chrono::Duration::minutes(1) {
         return Err(ApiError::ValidationError(
             "Start time must be at least 1 minute in the future".to_string(),
         ));
     }
 
     // Validate time range
-    if let Some(end_time) = payload.end_time {
-        if end_time <= payload.start_time {
+    if let Some(end_time) = end_time_utc {
+        if end_time <= start_time_utc {
             return Err(ApiError::ValidationError(
                 "End time must be after start time".to_string(),
             ));
         }
 
         // Validate meeting duration is reasonable (max 24 hours)
-        let duration = end_time - payload.start_time;
+        let duration = end_time - start_time_utc;
         if duration > chrono::Duration::hours(24) {
             return Err(ApiError::ValidationError(
                 "Meeting duration cannot exceed 24 hours".to_string(),
@@ -185,7 +195,7 @@ pub async fn create_meeting(
     let meeting_id = Uuid::new_v4();
 
     // Create meeting with status = scheduled
-    // Input times are already in Nigeria time, store directly
+    // Times are converted to UTC for storage
     let meeting = meetings::ActiveModel {
         id: Set(meeting_id),
         meeting_identifier: Set(meeting_identifier),
@@ -194,8 +204,8 @@ pub async fn create_meeting(
         title: Set(payload.title),
         metadata: Set(payload.metadata),
         is_private: Set(payload.is_private.unwrap_or(false)),
-        start_time: Set(payload.start_time),
-        end_time: Set(payload.end_time),
+        start_time: Set(start_time_utc),
+        end_time: Set(end_time_utc),
         status: Set(MeetingStatus::Scheduled),
         created_at: Set(now),
         updated_at: Set(now),
@@ -210,12 +220,12 @@ pub async fn create_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc_opt(meeting.end_time),
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        created_at: format_utc(meeting.created_at),
+        updated_at: format_utc(meeting.updated_at),
     };
 
     Ok((
@@ -265,12 +275,12 @@ pub async fn get_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc_opt(meeting.end_time),
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        created_at: format_utc(meeting.created_at),
+        updated_at: format_utc(meeting.updated_at),
     };
 
     Ok(Json(ApiResponse {
@@ -340,15 +350,32 @@ pub async fn update_meeting(
         ));
     }
 
-    let now = now_naive();
+    let now = now_utc();
 
-    // Determine final start_time and end_time after update (all in Nigeria time)
-    let final_start_time = payload
-        .start_time
-        .unwrap_or(meeting.start_time);
-    let final_end_time = payload
-        .end_time
-        .or(meeting.end_time);
+    // Convert local times to UTC if timezone is provided
+    let start_time_utc = match (payload.start_time, &payload.timezone) {
+        (Some(st), Some(tz)) => Some(local_to_utc(st, tz).map_err(|e| ApiError::ValidationError(e))?),
+        (Some(_), None) => {
+            return Err(ApiError::ValidationError(
+                "timezone is required when updating start_time".to_string(),
+            ));
+        }
+        _ => None,
+    };
+
+    let end_time_utc = match (payload.end_time, &payload.timezone) {
+        (Some(et), Some(tz)) => Some(local_to_utc(et, tz).map_err(|e| ApiError::ValidationError(e))?),
+        (Some(_), None) => {
+            return Err(ApiError::ValidationError(
+                "timezone is required when updating end_time".to_string(),
+            ));
+        }
+        _ => None,
+    };
+
+    // Determine final start_time and end_time after update (all in UTC)
+    let final_start_time = start_time_utc.unwrap_or(meeting.start_time);
+    let final_end_time = end_time_utc.or(meeting.end_time);
 
     // Validate start time is in the future (allow updates up to current time for ongoing meetings)
     if meeting.status == MeetingStatus::Scheduled && final_start_time <= now {
@@ -374,7 +401,7 @@ pub async fn update_meeting(
         }
     }
 
-    // Update meeting (input times are already in Nigeria time)
+    // Update meeting (times converted to UTC)
     let mut meeting: meetings::ActiveModel = meeting.into();
 
     if let Some(title) = payload.title {
@@ -383,10 +410,10 @@ pub async fn update_meeting(
     if let Some(is_private) = payload.is_private {
         meeting.is_private = Set(is_private);
     }
-    if let Some(start_time) = payload.start_time {
+    if let Some(start_time) = start_time_utc {
         meeting.start_time = Set(start_time);
     }
-    if let Some(end_time) = payload.end_time {
+    if let Some(end_time) = end_time_utc {
         meeting.end_time = Set(Some(end_time));
     }
     if let Some(metadata) = payload.metadata {
@@ -403,12 +430,12 @@ pub async fn update_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc_opt(meeting.end_time),
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        created_at: format_utc(meeting.created_at),
+        updated_at: format_utc(meeting.updated_at),
     };
 
     Ok(Json(ApiResponse {
@@ -530,7 +557,7 @@ async fn join_meeting_internal(
         return Err(ApiError::Conflict("Meeting has been cancelled".to_string()));
     }
 
-    let now = now_naive();
+    let now = now_utc();
     let start_time = meeting.start_time;
 
     // Time-based validation for scheduled meetings
@@ -591,7 +618,7 @@ async fn join_meeting_internal(
 
     // Create participant record
     let participant_id = Uuid::new_v4();
-    let now = now_naive();
+    let now = now_utc();
 
     // Determine initial status: waiting room for private meetings (except host)
     let initial_status = if meeting.is_private && !is_host {
@@ -738,7 +765,7 @@ pub async fn end_meeting(
         return Err(ApiError::Conflict("Meeting has already ended".to_string()));
     }
 
-    let now = now_naive();
+    let now = now_utc();
 
     // Update meeting status to ended
     let mut meeting_update: meetings::ActiveModel = meeting.into();
@@ -875,8 +902,8 @@ pub async fn get_public_meeting_info(
         meeting_identifier: meeting.meeting_identifier.clone(),
         title: meeting.title,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc_opt(meeting.end_time),
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
     };
@@ -893,7 +920,8 @@ pub async fn get_public_meeting_info(
 
 /// Request to create a meeting via API key
 ///
-/// **Note**: `start_time` and `end_time` are in Nigeria Time (WAT, UTC+1).
+/// **Note**: `start_time` and `end_time` are in the user's local timezone.
+/// The `timezone` field must be a valid IANA timezone string.
 #[derive(Debug, serde::Deserialize, Validate, utoipa::ToSchema)]
 pub struct ApiCreateMeetingRequest {
     #[validate(length(
@@ -903,13 +931,17 @@ pub struct ApiCreateMeetingRequest {
     ))]
     pub title: String,
 
-    /// Start time in Nigeria Time (WAT, UTC+1). Format: "YYYY-MM-DDTHH:MM:SS"
+    /// Start time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T14:00:00")]
     pub start_time: chrono::NaiveDateTime,
 
-    /// End time in Nigeria Time (WAT, UTC+1). Format: "YYYY-MM-DDTHH:MM:SS"
+    /// End time in the user's local timezone. Format: "YYYY-MM-DDTHH:MM:SS"
     #[schema(example = "2026-01-25T15:00:00")]
     pub end_time: Option<chrono::NaiveDateTime>,
+
+    /// IANA timezone of the user (e.g., "Africa/Lagos", "America/New_York")
+    #[schema(example = "Africa/Lagos")]
+    pub timezone: String,
 
     #[serde(default)]
     pub is_private: Option<bool>,
@@ -958,25 +990,36 @@ pub async fn api_create_meeting(
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
     let user_id = api_claims.user_id;
-    let now = now_naive();
+
+    // Convert local times to UTC using the provided timezone
+    let start_time_utc = local_to_utc(payload.start_time, &payload.timezone)
+        .map_err(|e| ApiError::ValidationError(e))?;
+
+    let end_time_utc = payload
+        .end_time
+        .map(|et| local_to_utc(et, &payload.timezone))
+        .transpose()
+        .map_err(|e| ApiError::ValidationError(e))?;
+
+    let now = now_utc();
 
     // Validate start time is in the future (at least 1 minute from now)
-    if payload.start_time <= now + chrono::Duration::minutes(1) {
+    if start_time_utc <= now + chrono::Duration::minutes(1) {
         return Err(ApiError::ValidationError(
             "Start time must be at least 1 minute in the future".to_string(),
         ));
     }
 
     // Validate time range
-    if let Some(end_time) = payload.end_time {
-        if end_time <= payload.start_time {
+    if let Some(end_time) = end_time_utc {
+        if end_time <= start_time_utc {
             return Err(ApiError::ValidationError(
                 "End time must be after start time".to_string(),
             ));
         }
 
         // Validate meeting duration is reasonable (max 24 hours)
-        let duration = end_time - payload.start_time;
+        let duration = end_time - start_time_utc;
         if duration > chrono::Duration::hours(24) {
             return Err(ApiError::ValidationError(
                 "Meeting duration cannot exceed 24 hours".to_string(),
@@ -989,7 +1032,7 @@ pub async fn api_create_meeting(
     let meeting_id = Uuid::new_v4();
 
     // Create meeting with status = scheduled
-    // Input times are already in Nigeria time, store directly
+    // Times are converted to UTC for storage
     let meeting = meetings::ActiveModel {
         id: Set(meeting_id),
         meeting_identifier: Set(meeting_identifier),
@@ -998,8 +1041,8 @@ pub async fn api_create_meeting(
         title: Set(payload.title),
         metadata: Set(payload.metadata),
         is_private: Set(payload.is_private.unwrap_or(false)),
-        start_time: Set(payload.start_time),
-        end_time: Set(payload.end_time),
+        start_time: Set(start_time_utc),
+        end_time: Set(end_time_utc),
         status: Set(MeetingStatus::Scheduled),
         created_at: Set(now),
         updated_at: Set(now),
@@ -1014,12 +1057,12 @@ pub async fn api_create_meeting(
         title: meeting.title,
         metadata: meeting.metadata,
         is_private: meeting.is_private,
-        start_time: meeting.start_time,
-        end_time: meeting.end_time,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc_opt(meeting.end_time),
         status: format_status(&meeting.status),
         join_url: state.join_url(&meeting.meeting_identifier),
-        created_at: meeting.created_at,
-        updated_at: meeting.updated_at,
+        created_at: format_utc(meeting.created_at),
+        updated_at: format_utc(meeting.updated_at),
     };
 
     Ok((

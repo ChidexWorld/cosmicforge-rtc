@@ -39,7 +39,7 @@ use crate::{
         ApiResponse, ChatMessageResponse, ChatMessagesListResponse,
         ChatMessagesQuery, SendChatMessageRequest,
     },
-    utils::now_naive,
+    utils::{format_utc, now_utc},
     error::{ApiError, ApiResult},
     models::{
         chat_messages::{self, Entity as ChatMessages},
@@ -174,7 +174,7 @@ pub async fn send_message(
         }
     }
 
-    let now = now_naive();
+    let now = now_utc();
     let message_id = Uuid::new_v4();
 
     // Create chat message
@@ -193,7 +193,7 @@ pub async fn send_message(
         participant_id: payload.participant_id,
         display_name: participant.display_name,
         message: payload.message,
-        created_at: now,
+        created_at: format_utc(now),
     };
 
     Ok((
@@ -372,7 +372,7 @@ pub async fn get_messages(
                 .cloned()
                 .unwrap_or_else(|| "Unknown".to_string()),
             message: m.message,
-            created_at: m.created_at,
+            created_at: format_utc(m.created_at),
         })
         .collect();
 
