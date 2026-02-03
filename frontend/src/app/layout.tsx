@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import QueryProvider from "@/providers/QueryProvider";
+import "@livekit/components-styles";
+import "@livekit/components-styles/prefabs";
 import "./globals.css";
 
 const inter = Inter({

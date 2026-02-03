@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import Image from "next/image";
 import { useMeetings } from "@/hooks";
 import type { Meeting } from "@/types/meeting";
 import { formatDateForDisplay, formatTimeForDisplay } from "@/utils/timezone";
+import JoinMeetingInput from "@/components/layout/JoinMeetingInput";
 
 export default function DashboardContent() {
   const router = useRouter();
@@ -47,14 +49,12 @@ export default function DashboardContent() {
       </div>
 
       {/* Join input */}
-      <div className="flex justify-center gap-2 sm:gap-3 mt-6 sm:mt-8 md:mt-10 px-2">
-        <Input
-          placeholder="Enter Link or Code"
-          className="w-full max-w-[280px] sm:max-w-[340px] md:max-w-[384px] h-10 sm:h-11"
+      <div className="flex justify-center mt-6 sm:mt-8 md:mt-10 px-2">
+        <JoinMeetingInput
+          className="max-w-[280px] sm:max-w-[340px] md:max-w-[384px] gap-2 sm:gap-3"
+          inputClassName="h-10 sm:h-11 border-[#029CD4] focus:ring-[#029CD44D]"
+          buttonClassName="h-10 sm:h-11 px-5 sm:px-8"
         />
-        <Button className="bg-[#029CD4] h-10 sm:h-11 px-5 sm:px-8 hover:bg-[#028bbd] shrink-0">
-          Join
-        </Button>
       </div>
 
       {/* Meeting history section */}
@@ -99,7 +99,7 @@ export default function DashboardContent() {
 
 function MeetingCard({ meeting }: { meeting: Meeting }) {
   return (
-    <div className="w-[200px] sm:w-[230px] md:w-[258px] h-[100px] sm:h-[110px] md:h-[118px] bg-white rounded-[10px] p-3 sm:p-4 shadow-sm border border-gray-50 shrink-0 flex flex-col justify-between">
+    <div className="w-[200px] sm:w-[230px] md:w-[258px] h-[115px] sm:h-[125px] md:h-[135px] bg-white rounded-[10px] p-3 sm:p-4 shadow-sm border border-gray-50 shrink-0 flex flex-col justify-between">
       <div className="flex justify-between items-start">
         <h4 className="text-[#029CD4] font-semibold text-[13px] sm:text-[15px] md:text-[16px] leading-none truncate pr-2">
           {meeting.title}
@@ -116,10 +116,23 @@ function MeetingCard({ meeting }: { meeting: Meeting }) {
         </p>
       </div>
 
-      <div className="flex justify-between items-center">
-        <span className="text-[#00000080] font-normal text-[11px] sm:text-[12px] leading-none">
-          {meeting.meeting_identifier}
-        </span>
+      <div className="flex justify-between items-end">
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[#00000080] font-normal text-[11px] sm:text-[12px] leading-none">
+            {meeting.meeting_identifier}
+          </span>
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full capitalize font-medium w-fit ${
+              meeting.status === "live"
+                ? "bg-green-100 text-green-700"
+                : meeting.status === "scheduled"
+                  ? "bg-blue-100 text-blue-700"
+                  : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {meeting.status}
+          </span>
+        </div>
         {/* Avatar Stack */}
         <div className="flex -space-x-2">
           {[1, 2, 3, 4].map((avatar) => (

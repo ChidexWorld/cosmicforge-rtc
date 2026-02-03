@@ -6,6 +6,12 @@ import { useCreateMeeting } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { ApiErrorResponse } from "@/types/auth";
 import type { AxiosError } from "axios";
 import { Calendar, Clock, Lock, Globe, CheckCircle } from "lucide-react";
@@ -235,32 +241,56 @@ export default function ScheduleContent() {
           <Label className="text-sm font-medium text-[#343434]">
             Meeting Type
           </Label>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => setIsPrivate(true)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                isPrivate
-                  ? "bg-[#029CD4] text-white shadow-sm"
-                  : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
-              }`}
-            >
-              <Lock className="w-4 h-4" />
-              Private
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPrivate(false)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                !isPrivate
-                  ? "bg-[#029CD4] text-white shadow-sm"
-                  : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-              Public
-            </button>
-          </div>
+          <TooltipProvider>
+            <div className="flex gap-3">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(true)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      isPrivate
+                        ? "bg-[#029CD4] text-white shadow-sm"
+                        : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
+                    }`}
+                  >
+                    <Lock className="w-4 h-4" />
+                    Private
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">
+                    Private meetings require authentication. Guests cannot join,
+                    and authenticated participants must wait for host approval
+                    before entering.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(false)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      !isPrivate
+                        ? "bg-[#029CD4] text-white shadow-sm"
+                        : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
+                    }`}
+                  >
+                    <Globe className="w-4 h-4" />
+                    Public
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">
+                    Public meetings allow anyone with the link to join
+                    instantly, including guests. No waiting room or approval
+                    needed.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
 
         {/* Metadata / Description */}

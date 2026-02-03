@@ -122,6 +122,7 @@ pub struct ParticipantResponse {
 /// Response for joining a meeting (includes join token)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct JoinMeetingResponse {
+    pub meeting_id: Uuid,
     pub participant_id: Uuid,
     pub role: String,
     /// Short-lived token for WebSocket/RTC session

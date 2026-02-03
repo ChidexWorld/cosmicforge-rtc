@@ -616,9 +616,77 @@ async fn join_meeting_internal(
         ParticipantRole::Participant
     };
 
-    // Create participant record
-    let participant_id = Uuid::new_v4();
     let now = now_utc();
+
+    // Check if participant already exists for this meeting (by user_id or display_name for guests)
+    let existing_participant = if let Some(user_id) = payload.user_id {
+        // For authenticated users, check by user_id
+        Participants::find()
+            .filter(participants::Column::MeetingId.eq(meeting.id))
+            .filter(participants::Column::UserId.eq(user_id))
+            .filter(participants::Column::LeaveTime.is_null())
+            .one(&state.db)
+            .await?
+    } else {
+        // For guests, check by display_name (not ideal but necessary)
+        Participants::find()
+            .filter(participants::Column::MeetingId.eq(meeting.id))
+            .filter(participants::Column::UserId.is_null())
+            .filter(participants::Column::DisplayName.eq(&payload.display_name))
+            .filter(participants::Column::LeaveTime.is_null())
+            .one(&state.db)
+            .await?
+    };
+
+    // If participant exists, handle based on their status
+    if let Some(existing) = existing_participant {
+        match existing.status {
+            ParticipantStatus::Waiting => {
+                // Still in waiting room - return without token
+                return Ok(Json(ApiResponse {
+                    success: true,
+                    data: JoinMeetingResponse {
+                        meeting_id: meeting.id,
+                        participant_id: existing.id,
+                        role: format_role(&existing.role),
+                        join_token: String::new(),
+                        livekit_url: String::new(),
+                        room_name: meeting.meeting_identifier.clone(),
+                    },
+                }));
+            }
+            ParticipantStatus::Joined => {
+                // Already admitted - generate token and return
+                let room_name = &meeting.meeting_identifier;
+                let join_token = state.livekit_service.generate_join_token(
+                    room_name,
+                    &existing.id.to_string(),
+                    &existing.display_name,
+                    existing.role == ParticipantRole::Host,
+                )?;
+
+                return Ok(Json(ApiResponse {
+                    success: true,
+                    data: JoinMeetingResponse {
+                        meeting_id: meeting.id,
+                        participant_id: existing.id,
+                        role: format_role(&existing.role),
+                        join_token,
+                        livekit_url: state.livekit_service.get_url().to_string(),
+                        room_name: room_name.clone(),
+                    },
+                }));
+            }
+            ParticipantStatus::Kicked => {
+                return Err(ApiError::Forbidden(
+                    "You have been removed from this meeting".to_string(),
+                ));
+            }
+        }
+    }
+
+    // Create new participant record
+    let participant_id = Uuid::new_v4();
 
     // Determine initial status: waiting room for private meetings (except host)
     let initial_status = if meeting.is_private && !is_host {
@@ -648,6 +716,7 @@ async fn join_meeting_internal(
         return Ok(Json(ApiResponse {
             success: true,
             data: JoinMeetingResponse {
+                meeting_id: meeting.id,
                 participant_id,
                 role: format_role(&role),
                 join_token: String::new(), // No token for waiting room
@@ -705,6 +774,7 @@ async fn join_meeting_internal(
     )?;
 
     let response = JoinMeetingResponse {
+        meeting_id: meeting.id,
         participant_id,
         role: format_role(&role),
         join_token,

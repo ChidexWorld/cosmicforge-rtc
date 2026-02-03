@@ -49,9 +49,59 @@ export interface UpdateMeetingRequest {
   metadata?: string;
 }
 
+export interface JoinMeetingData {
+  meeting_id: string;
+  participant_id: string;
+  role: "host" | "participant" | "viewer";
+  join_token: string;
+  livekit_url: string;
+  room_name: string;
+}
+
 export interface JoinMeetingResponse {
   success: boolean;
-  data: Meeting;
+  data: JoinMeetingData;
+}
+
+export interface JoinMeetingRequest {
+  user_id?: string;
+  display_name: string;
+}
+
+export interface WaitingParticipant {
+  participant_id: string;
+  user_id?: string;
+  display_name: string;
+  join_time: string;
+}
+
+export interface WaitingListResponse {
+  success: boolean;
+  data: WaitingParticipant[];
+}
+
+export interface ParticipantActionResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface Participant {
+  participant_id: string;
+  meeting_id: string;
+  user_id?: string;
+  role: string;
+  display_name: string;
+  status: string;
+  join_time: string;
+  leave_time?: string;
+  is_muted: boolean;
+  is_video_on: boolean;
+  is_screen_sharing: boolean;
+}
+
+export interface ParticipantsListResponse {
+  success: boolean;
+  data: Participant[];
 }
 
 export interface MeetingsResponse {
@@ -63,4 +113,12 @@ export interface MeetingsResponse {
     total: number;
     total_pages: number;
   };
+}
+
+export interface ChatMessage {
+  id: string;
+  participant_id: string;
+  display_name: string;
+  message: string;
+  created_at: string;
 }

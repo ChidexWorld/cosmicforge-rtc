@@ -17,7 +17,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 // Response Interceptor: Auto-refresh on 401
@@ -49,7 +49,24 @@ api.interceptors.response.use(
       originalRequest?.url?.includes("/auth/refresh") ||
       originalRequest?.url?.includes("/auth/register");
 
-    if (error.response?.status !== 401 || originalRequest._retry || isAuthEndpoint) {
+    if (
+      error.response?.status !== 401 ||
+      originalRequest._retry ||
+      isAuthEndpoint
+    ) {
+      // Global Error Handling for Upgrade/Network Issues
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.includes("/server-error")
+      ) {
+        // Redirect on 5xx errors or network errors (no response)
+        if (
+          (!error.response || error.response.status >= 500) &&
+          error.code !== "ERR_CANCELED"
+        ) {
+          window.location.href = "/server-error";
+        }
+      }
       return Promise.reject(error);
     }
 
@@ -75,7 +92,7 @@ api.interceptors.response.use(
       const { data } = await axios.post(
         `${api.defaults.baseURL}/auth/refresh`,
         { refresh_token: refreshToken },
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { "Content-Type": "application/json" } },
       );
 
       const { access_token, refresh_token } = data;
@@ -95,7 +112,7 @@ api.interceptors.response.use(
     } finally {
       isRefreshing = false;
     }
-  }
+  },
 );
 
 export default api;

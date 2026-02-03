@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -13,10 +13,18 @@ import { useLogin } from "@/hooks";
 import type { ApiErrorResponse } from "@/types/auth";
 import { AxiosError } from "axios";
 import { authService } from "@/services/auth.service";
+import { cookieStore } from "@/store";
 
 const LoginModal = () => {
   const router = useRouter();
   const login = useLogin();
+
+  useEffect(() => {
+    const token = cookieStore.getAccessToken();
+    if (token) {
+      router.push("/dashboard");
+    }
+  }, [router]);
 
   const [form, setForm] = useState({
     email: "",

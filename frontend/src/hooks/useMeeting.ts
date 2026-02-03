@@ -6,5 +6,6 @@ export function useMeeting(id: string) {
     queryKey: ["meeting", id],
     queryFn: () => meetingService.getMeeting(id),
     enabled: !!id,
+    refetchInterval: 5000,
   });
 }

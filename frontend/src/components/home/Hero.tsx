@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Image from 'next/image';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import Image from "next/image";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import JoinMeetingInput from "@/components/layout/JoinMeetingInput";
 
 const slides = [
   {
@@ -42,6 +44,8 @@ const AUTO_SLIDE_INTERVAL = 5000;
 type Phase = "visible" | "exit" | "reset" | "enter";
 
 const Hero = () => {
+  const router = useRouter();
+
   const [currentSlide, setCurrentSlide] = useState(0);
   const [imagePhase, setImagePhase] = useState<Phase>("visible");
   const [textPhase, setTextPhase] = useState<Phase>("visible");
@@ -179,16 +183,11 @@ const Hero = () => {
       </Link>
 
       {/* Join Link Input */}
-      <div className="flex w-full max-w-xs sm:max-w-md gap-2  mb-6 sm:mb-12">
-        <Input
-          type="text"
-          placeholder="Enter Link or Code"
-          className="flex-1 border-[#029CD4] focus:ring-[#029CD44D] text-sm sm:text-base"
-        />
-        <Button size="sm" className="px-5 sm:px-8">
-          Join
-        </Button>
-      </div>
+      <JoinMeetingInput
+        className="max-w-xs sm:max-w-md mb-6 sm:mb-12"
+        inputClassName="border-[#029CD4] focus:ring-[#029CD44D] text-sm sm:text-base"
+        buttonClassName="px-5 sm:px-8"
+      />
     </main>
   );
 };

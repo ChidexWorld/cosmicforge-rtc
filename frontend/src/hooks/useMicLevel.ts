@@ -1,11 +1,8 @@
 "use client";
 
-import { type MutableRefObject, useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
-export function useMicLevel(
-  isMicOn: boolean,
-  streamRef: MutableRefObject<MediaStream | null>
-) {
+export function useMicLevel(isMicOn: boolean, stream: MediaStream | null) {
   const [rawLevel, setRawLevel] = useState(0);
 
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -14,23 +11,16 @@ export function useMicLevel(
   const levelRef = useRef(0);
 
   useEffect(() => {
-    if (!isMicOn) {
+    if (!isMicOn || !stream) {
       levelRef.current = 0;
+      setRawLevel(0);
       return;
     }
 
     let cancelled = false;
 
     const setupAnalyser = async () => {
-      let stream = streamRef.current;
-      if (!stream) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch {
-          return;
-        }
-      }
-
+      // Stream is passed directly now
       if (cancelled) return;
 
       const audioContext = new AudioContext();
@@ -66,11 +56,10 @@ export function useMicLevel(
       tick();
     };
 
-    const timeout = setTimeout(setupAnalyser, 300);
+    setupAnalyser();
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
       cancelAnimationFrame(animFrameRef.current);
       if (audioContextRef.current) {
         audioContextRef.current.close();
@@ -78,7 +67,7 @@ export function useMicLevel(
       }
       analyserRef.current = null;
     };
-  }, [isMicOn, streamRef]);
+  }, [isMicOn, stream]);
 
   // Derive final value: if mic is off, always return 0
   return isMicOn ? rawLevel : 0;

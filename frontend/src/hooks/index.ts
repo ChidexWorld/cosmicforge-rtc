@@ -17,3 +17,7 @@ export * from "./useMediaStream";
 export * from "./useMicLevel";
 export * from "./useUser";
 export * from "./useApiKeys";
+export * from "./useWaitingRoom";
+export * from "./useParticipants";
+export * from "./useMediaControl";
+export * from "./useChat";
