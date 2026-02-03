@@ -17,11 +17,11 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   Pencil,
   Trash2,
   X,
 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import {
   getUserTimezone,
   formatShortDateForDisplay,
@@ -113,7 +113,7 @@ export default function MeetingsContent() {
       {/* Content */}
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-6 h-6 text-[#029CD4] animate-spin" />
+          <Spinner />
         </div>
       ) : isError ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -228,7 +228,8 @@ function MeetingCard({
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              {formatTimeForDisplay(meeting.start_time)} – {formatTimeForDisplay(meeting.end_time)}
+              {formatTimeForDisplay(meeting.start_time)} –{" "}
+              {formatTimeForDisplay(meeting.end_time)}
             </span>
             <span className="flex items-center gap-1">
               <Video className="w-3.5 h-3.5" />
@@ -311,7 +312,9 @@ function EditMeetingModal({
 
   const [title, setTitle] = useState(meeting.title);
   const [date, setDate] = useState(toLocalDateValue(meeting.start_time));
-  const [startTime, setStartTime] = useState(toLocalTimeValue(meeting.start_time));
+  const [startTime, setStartTime] = useState(
+    toLocalTimeValue(meeting.start_time),
+  );
   const [endTime, setEndTime] = useState(toLocalTimeValue(meeting.end_time));
   const [isPrivate, setIsPrivate] = useState(meeting.is_private);
   const [metadata, setMetadata] = useState(meeting.metadata || "");

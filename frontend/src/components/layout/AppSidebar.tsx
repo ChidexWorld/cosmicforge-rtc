@@ -4,29 +4,29 @@ import { useState } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useRouter, usePathname } from "next/navigation";
-import { Home, Video, Calendar, MessageSquare, Settings, ChevronRight, ChevronLeft, LogOut } from "lucide-react";
-import { useLogout } from "@/hooks";
+import {
+  Home,
+  Video,
+  Calendar,
+  Code2,
+  Settings,
+  ChevronRight,
+  ChevronLeft,
+} from "lucide-react";
+import ProfileMenu from "./ProfileMenu";
 
 const menu = [
   { label: "Dashboard", icon: Home, href: "/dashboard" },
   { label: "Meetings", icon: Video, href: "/dashboard/meetings" },
   { label: "Schedule", icon: Calendar, href: "/dashboard/schedule" },
-  { label: "Messages", icon: MessageSquare, href: "/dashboard/messages" },
+  { label: "Developers", icon: Code2, href: "/dashboard/developers" },
   { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 export default function AppSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const logout = useLogout();
   const [expanded, setExpanded] = useState(false);
-
-  const handleLogout = () => {
-    logout.mutate(undefined, {
-      onSuccess: () => router.push("/login"),
-      onError: () => router.push("/login"),
-    });
-  };
 
   return (
     <aside
@@ -69,7 +69,8 @@ export default function AppSidebar() {
               key={label}
               onClick={() => router.push(href)}
               className={cn(
-                "relative w-full flex items-center gap-3 px-4 py-3 transition-colors",
+                "relative w-full flex items-center gap-3 py-3 transition-colors",
+                expanded ? "px-4" : "justify-center px-2",
                 isActive ? "text-[#029CD4]" : "text-[#B6B6B6]",
               )}
             >
@@ -87,28 +88,13 @@ export default function AppSidebar() {
       </nav>
 
       {/* Bottom Section */}
-      <div className="absolute bottom-6 left-0 w-full space-y-4 px-4">
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          disabled={logout.isPending}
-          className="w-full flex items-center gap-3 text-[#B6B6B6] hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <LogOut className="w-5 h-5 min-w-5" />
-          {expanded && <span className="text-sm font-medium">Logout</span>}
-        </button>
-
-        {/* Profile */}
-        <div className="flex items-center gap-3">
-          <Image
-            src="/profile.png"
-            alt="Profile"
-            width={36}
-            height={36}
-            className="w-9 h-9 min-w-9 rounded-full object-cover"
-          />
-          {expanded && <span className="text-sm font-medium text-gray-700 truncate">Profile</span>}
-        </div>
+      <div
+        className={cn(
+          "absolute bottom-6 left-0 w-full space-y-4",
+          expanded ? "px-4" : "px-0 flex flex-col items-center",
+        )}
+      >
+        <ProfileMenu expanded={expanded} />
       </div>
     </aside>
   );

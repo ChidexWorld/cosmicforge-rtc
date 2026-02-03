@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Video, Calendar, MoreVertical, Plus, Loader2 } from "lucide-react";
+import { Video, Calendar, MoreVertical, Plus } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
 import Image from "next/image";
 import { useMeetings } from "@/hooks";
 import type { Meeting } from "@/types/meeting";
@@ -64,7 +65,7 @@ export default function DashboardContent() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 text-[#029CD4] animate-spin" />
+            <Spinner />
           </div>
         ) : meetings.length === 0 ? (
           <p className="text-sm text-[#00000080]">No meetings yet.</p>

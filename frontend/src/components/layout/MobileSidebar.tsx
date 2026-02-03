@@ -4,38 +4,21 @@ import { useState } from "react";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  Home,
-  Video,
-  Calendar,
-  MessageSquare,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
-import { useLogout } from "@/hooks";
+import { Home, Video, Calendar, Code2, Settings, Menu, X } from "lucide-react";
+import ProfileMenu from "./ProfileMenu";
 
 const menu = [
   { label: "Dashboard", icon: Home, href: "/dashboard" },
   { label: "Meetings", icon: Video, href: "/dashboard/meetings" },
   { label: "Schedule", icon: Calendar, href: "/dashboard/schedule" },
-  { label: "Messages", icon: MessageSquare, href: "/dashboard/messages" },
+  { label: "Developers", icon: Code2, href: "/dashboard/developers" },
   { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 export default function MobileSidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const logout = useLogout();
   const [open, setOpen] = useState(false);
-
-  const handleLogout = () => {
-    logout.mutate(undefined, {
-      onSuccess: () => router.push("/login"),
-      onError: () => router.push("/login"),
-    });
-  };
 
   return (
     <>
@@ -56,7 +39,7 @@ export default function MobileSidebar() {
           "fixed inset-0 z-50 bg-black/30 transition-opacity duration-300 md:hidden",
           open
             ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
+            : "opacity-0 pointer-events-none",
         )}
         onClick={() => setOpen(false)}
       />
@@ -64,12 +47,12 @@ export default function MobileSidebar() {
       {/* Drawer panel — slides from LEFT */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full w-[260px] transition-transform duration-300 ease-in-out md:hidden",
-          open ? "translate-x-0" : "-translate-x-full"
+          "fixed top-0 left-0 z-50 h-full w-[220px] transition-transform duration-300 ease-in-out md:hidden",
+          open ? "translate-x-0" : "-translate-x-full",
         )}
       >
         {/* Inner container matching AppSidebar design */}
-        <div className="h-[calc(100vh-2rem)] my-4 ml-4 bg-[#FAFAFB] rounded-[40px] shadow-sm flex flex-col overflow-hidden">
+        <div className="h-[calc(100vh-2rem)] my-4 ml-4 bg-[#FAFAFB] rounded-[40px] shadow-sm flex flex-col">
           {/* Top row: Logo + Close button */}
           <div className="h-16 flex items-center justify-between pl-5 pr-4">
             <Image
@@ -105,7 +88,7 @@ export default function MobileSidebar() {
                   }}
                   className={cn(
                     "relative w-full flex items-center gap-3 px-5 py-3 transition-colors",
-                    isActive ? "text-[#029CD4]" : "text-[#B6B6B6]"
+                    isActive ? "text-[#029CD4]" : "text-[#B6B6B6]",
                   )}
                 >
                   <Icon className="w-5 h-5" />
@@ -121,29 +104,7 @@ export default function MobileSidebar() {
 
           {/* Bottom Section */}
           <div className="pb-8 px-5 space-y-4">
-            {/* Logout */}
-            <button
-              onClick={handleLogout}
-              disabled={logout.isPending}
-              className="w-full flex items-center gap-3 text-[#B6B6B6] hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <LogOut className="w-5 h-5 min-w-5" />
-              <span className="text-sm font-medium">Logout</span>
-            </button>
-
-            {/* Profile */}
-            <div className="flex items-center gap-3">
-              <Image
-                src="/profile.png"
-                alt="Profile"
-                width={36}
-                height={36}
-                className="w-9 h-9 min-w-9 rounded-full object-cover"
-              />
-              <span className="text-sm font-medium text-gray-700 truncate">
-                Profile
-              </span>
-            </div>
+            <ProfileMenu expanded={true} mobile={true} />
           </div>
         </div>
       </aside>
