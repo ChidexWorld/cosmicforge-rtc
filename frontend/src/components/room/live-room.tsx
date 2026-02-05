@@ -28,7 +28,7 @@ interface LiveRoomProps {
 }
 export default function LiveRoom({ joinData }: LiveRoomProps) {
   const router = useRouter();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Poll meeting status to auto-redirect if meeting ends
   const { data: meetingData } = useMeeting(joinData.meeting_id);
