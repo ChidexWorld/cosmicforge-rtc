@@ -1,6 +1,14 @@
 import axios from "axios";
 import { cookieStore, storageStore } from "@/store";
 
+// Public API instance (no auth interceptors)
+export const publicApi = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1",
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1",
   headers: {
