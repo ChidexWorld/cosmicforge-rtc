@@ -56,6 +56,8 @@ export interface JoinMeetingData {
   join_token: string;
   livekit_url: string;
   room_name: string;
+  access_token?: string;
+  refresh_token?: string;
 }
 
 export interface JoinMeetingResponse {

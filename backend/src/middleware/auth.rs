@@ -35,7 +35,40 @@ pub async fn auth_middleware(
         .strip_prefix("Bearer ")
         .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
 
-    let claims = state.jwt_service.verify_token(token)?;
+    // Verify token
+    let claims = state
+        .jwt_service
+        .verify_token(token)
+        .map_err(|_| ApiError::Unauthorized("Invalid or expired token".to_string()))?;
+
+    // Check for Guest Role
+    if claims.role == "guest" {
+        use crate::models::participants::Entity as Participants;
+        
+        let participant_id = Uuid::parse_str(&claims.sub).map_err(|_| {
+            ApiError::Unauthorized("Invalid participant identifier in token".to_string())
+        })?;
+
+        let participant = Participants::find_by_id(participant_id)
+            .one(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::Unauthorized("Guest participant not found".to_string()))?;
+
+        // Create auth context for guest
+        // We set status to Active as guests don't have account status
+        // We set user_id to participant_id for guests in the context, but this field is typed as Uuid so it fits.
+        // NOTE: Handlers must know that if role is Guest, user_id is actually a participant_id (or we rely on meeting ownership checks which won't match anyway).
+        let auth_context = AuthContext {
+            user_id: participant.id, // Using participant_id as the "user_id" in context
+            role: UserRole::Guest,
+            status: UserStatus::Active,
+        };
+
+        request.extensions_mut().insert(claims);
+        request.extensions_mut().insert(auth_context);
+
+        return Ok(next.run(request).await);
+    }
 
     // Parse user ID from claims
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| {

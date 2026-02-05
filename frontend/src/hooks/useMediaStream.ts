@@ -8,7 +8,7 @@ interface UseMediaStreamOptions {
 }
 
 export function useMediaStream(
-  options: UseMediaStreamOptions = { video: true, audio: true }
+  options: UseMediaStreamOptions = { video: true, audio: true },
 ) {
   const [isCameraOn, setIsCameraOn] = useState(!!options.video);
   const [isMicOn, setIsMicOn] = useState(!!options.audio);

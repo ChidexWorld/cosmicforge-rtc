@@ -1,26 +1,38 @@
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface SpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
   size?: "sm" | "md" | "lg" | "xl";
+  label?: string;
 }
 
-export function Spinner({ className, size = "md", ...props }: SpinnerProps) {
+export function Spinner({
+  className,
+  size = "md",
+  label,
+  ...props
+}: SpinnerProps) {
   const sizeClasses = {
-    sm: "w-4 h-4",
-    md: "w-8 h-8",
-    lg: "w-12 h-12",
-    xl: "w-16 h-16",
+    sm: "w-4 h-4 border",
+    md: "w-8 h-8 border-2",
+    lg: "w-12 h-12 border-2",
+    xl: "w-16 h-16 border-4",
   };
 
   return (
     <div
-      className={cn("flex items-center justify-center", className)}
+      className={cn(
+        "flex flex-col items-center justify-center gap-4",
+        className,
+      )}
       {...props}
     >
-      <Loader2
-        className={cn("animate-spin text-[#029CD4]", sizeClasses[size])}
+      <div
+        className={cn(
+          "border-[#029CD4] border-t-transparent rounded-full animate-spin",
+          sizeClasses[size],
+        )}
       />
+      {label && <p className="text-sm text-[#00000080]">{label}</p>}
     </div>
   );
 }

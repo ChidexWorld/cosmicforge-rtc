@@ -11,10 +11,11 @@ import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Spinner } from "@/components/ui/spinner";
 import { useMediaStream } from "@/hooks/useMediaStream";
 import { MicVisualizer } from "@/components/ui/mic-visualizer";
 import { useJoinMeeting, usePublicMeeting, useProfile } from "@/hooks";
-import { storageStore } from "@/store";
+import { storageStore, cookieStore } from "@/store";
 import type { JoinMeetingData } from "@/types/meeting";
 
 interface PreJoinScreenProps {
@@ -23,10 +24,19 @@ interface PreJoinScreenProps {
 }
 
 export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
+  // State for media controls (speaker, camera, mic)
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+
+  // State to track if user is in waiting room
   const [isWaiting, setIsWaiting] = useState(false);
+
+  // Display name state - auto-populated from profile/storage
   const [displayName, setDisplayName] = useState("");
+
+  // UI error state
   const [error, setError] = useState("");
+
+  // Ref for polling interval - used to check admission status
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { videoRef, streamRef, isCameraOn, isMicOn, toggleCamera, toggleMic } =
@@ -63,36 +73,44 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
     };
   }, []);
 
-  // Poll to check if participant has been admitted
+  // Poll to check if participant has been admitted to the meeting
+  // This runs when a user is placed in the waiting room (isWaiting = true)
   const startPolling = useCallback(() => {
-    // Clear any existing interval
+    // Clear any existing interval to prevent duplicates
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
     }
 
     pollIntervalRef.current = setInterval(async () => {
       try {
+        // Attempt to join again to check status.
+        // If admitted, the backend will return a join_token.
         const result = await joinMutation.mutateAsync({
           meetingIdentifier: roomId,
           data: {
-            user_id: profileData?.id || storedUser?.id,
+            // CRITICAL: We only send user_id if we have a valid authenticated profile.
+            // Guests join without a user_id.
+            // We DO NOT use storedUser.id here to avoid "User not found" errors from stale sessions.
+            user_id: profileData?.id,
             display_name: displayName.trim(),
           },
         });
 
+        // If we get a token, it means we've been admitted!
         if (result.data.join_token) {
           if (pollIntervalRef.current) {
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
           }
           setIsWaiting(false);
+          // Proceed to the main live room
           onJoin(result.data);
         }
       } catch {
-        // Still waiting or error - continue polling
+        // Still in waiting room or temporary network error - continue polling
       }
     }, 3000); // Check every 3 seconds
-  }, [roomId, displayName, profileData, storedUser, joinMutation, onJoin]);
+  }, [roomId, displayName, profileData, joinMutation, onJoin]);
 
   const handleJoin = async () => {
     setError("");
@@ -103,21 +121,45 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
     }
 
     try {
+      // Construct join data
+      const data = {
+        // LOGIC CONFIRMATION:
+        // 1. If profileData.id exists, the user is authenticated -> Send user_id.
+        // 2. If profileData.id is missing, the user is a guest -> Send undefined for user_id.
+        // 3. We NEVER use storedUser.id (localStorage) for user_id to prevent stale session errors.
+        user_id: profileData?.id,
+        display_name: displayName.trim(),
+      };
+
+      // Attempt to join the meeting
       const result = await joinMutation.mutateAsync({
         meetingIdentifier: roomId,
-        data: {
-          user_id: profileData?.id || storedUser?.id,
-          display_name: displayName.trim(),
-        },
+        data,
       });
 
       // Check if user is in waiting room (empty join_token means waiting)
       if (!result.data.join_token) {
+        // GUEST AUTH: Even if waiting, save tokens if provided (for polling/chat while waiting)
+        if (result.data.access_token && result.data.refresh_token) {
+          cookieStore.setTokens(
+            result.data.access_token,
+            result.data.refresh_token,
+          );
+        }
+
         setIsWaiting(true);
         // Start polling for admission status
         startPolling();
       } else {
-        // Host or admitted - proceed to room
+        // GUEST AUTH: If backend returned guest tokens, save them!
+        if (result.data.access_token && result.data.refresh_token) {
+          cookieStore.setTokens(
+            result.data.access_token,
+            result.data.refresh_token,
+          );
+        }
+
+        // Host or admitted immediately - proceed to room
         onJoin(result.data);
       }
     } catch (err: any) {
@@ -141,10 +183,7 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   if (isLoadingMeeting) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-[#029CD4] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-[#00000080]">Loading meeting info...</p>
-        </div>
+        <Spinner label="Loading meeting info..." />
       </div>
     );
   }
@@ -288,22 +327,63 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
             </Button>
           </div>
         ) : (
-          <Button
-            size="lg"
-            className="w-full max-w-xs"
-            onClick={handleJoin}
-            disabled={
-              joinMutation.isPending ||
-              meetingInfo?.data?.status === "ended" ||
-              meetingInfo?.data?.status === "cancelled"
-            }
-          >
-            {joinMutation.isPending
-              ? "Joining..."
-              : meetingInfo?.data?.status === "ended"
-                ? "Meeting Ended"
-                : "Join Meeting"}
-          </Button>
+          <>
+            {/* Logic for Scheduled Meetings:
+                - Check if meeting is 'scheduled' AND current time is before start_time
+                - Be explicit about preventing early joins
+                - Calculate remaining time to show countdown
+            */}
+            {meetingInfo?.data?.status === "scheduled" &&
+              (() => {
+                const now = new Date();
+                const startTime = new Date(meetingInfo.data.start_time);
+                const isBeforeStart = now < startTime;
+
+                if (isBeforeStart) {
+                  const minutesUntilStart = Math.ceil(
+                    (startTime.getTime() - now.getTime()) / (1000 * 60),
+                  );
+                  const hours = Math.floor(minutesUntilStart / 60);
+                  const minutes = minutesUntilStart % 60;
+                  const timeDisplay =
+                    hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+
+                  return (
+                    <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                      <p className="text-sm text-center text-[#00000080]">
+                        Meeting starts in {timeDisplay}
+                      </p>
+                      <Button size="lg" className="w-full" disabled>
+                        Meeting Not Started
+                      </Button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+            {(meetingInfo?.data?.status !== "scheduled" ||
+              new Date() >= new Date(meetingInfo?.data?.start_time || "")) && (
+              <Button
+                size="lg"
+                className="w-full max-w-xs"
+                onClick={handleJoin}
+                disabled={
+                  joinMutation.isPending ||
+                  meetingInfo?.data?.status === "ended" ||
+                  meetingInfo?.data?.status === "cancelled"
+                }
+              >
+                {joinMutation.isPending
+                  ? "Joining..."
+                  : meetingInfo?.data?.status === "ended"
+                    ? "Meeting Ended"
+                    : meetingInfo?.data?.status === "cancelled"
+                      ? "Meeting Cancelled"
+                      : "Join Meeting"}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>

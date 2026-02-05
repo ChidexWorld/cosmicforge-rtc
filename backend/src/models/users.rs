@@ -38,6 +38,8 @@ pub enum UserRole {
     User,
     #[sea_orm(string_value = "admin")]
     Admin,
+    #[sea_orm(string_value = "guest")]
+    Guest,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]

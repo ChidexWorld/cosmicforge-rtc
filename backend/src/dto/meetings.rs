@@ -131,6 +131,12 @@ pub struct JoinMeetingResponse {
     pub livekit_url: String,
     /// Room name for LiveKit
     pub room_name: String,
+    /// JWT Access Token (issued for guests)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+    /// JWT Refresh Token (issued for guests)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
 }
 
 /// Response for ending a meeting

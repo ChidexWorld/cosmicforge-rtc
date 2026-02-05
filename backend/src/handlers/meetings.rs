@@ -504,7 +504,7 @@ pub async fn delete_meeting(
 /// 2. Creates a Participant record
 /// 3. Assigns role (host or participant)
 /// 4. Generates a short-lived LiveKit join token
-/// 5. If meeting is scheduled, transitions it to live
+/// 5. If meeting is scheduled and start time reached, transitions it to live
 /// 6. Returns join token to client
 #[utoipa::path(
     post,
@@ -519,7 +519,7 @@ pub async fn delete_meeting(
         (status = 400, description = "Validation error - Invalid user_id or display_name"),
         (status = 403, description = "Private meeting - guests not allowed"),
         (status = 404, description = "Meeting not found"),
-        (status = 409, description = "Meeting has ended, cancelled, too early to join, or past scheduled end time")
+        (status = 409, description = "Meeting has ended, cancelled, hasn't started yet, or past scheduled end time")
     )
 )]
 pub async fn join_meeting(
@@ -561,18 +561,15 @@ async fn join_meeting_internal(
     let start_time = meeting.start_time;
 
     // Time-based validation for scheduled meetings
-    if meeting.status == MeetingStatus::Scheduled {
-        // Prevent joining too early (more than 15 minutes before start)
-        if now < start_time - chrono::Duration::minutes(15) {
-            let minutes_until_start = (start_time - now).num_minutes();
-            let wait_time = minutes_until_start - 15;
-            return Err(ApiError::Conflict(
-                format!(
-                    "Meeting hasn't started yet. Please try again in {}.",
-                    format_duration(wait_time)
-                )
-            ));
-        }
+    // Prevent joining if meeting status is still "Scheduled" and current time is before start time
+    if meeting.status == MeetingStatus::Scheduled && now < start_time {
+        let minutes_until_start = (start_time - now).num_minutes();
+        return Err(ApiError::Conflict(
+            format!(
+                "Meeting hasn't started yet. Please try again in {}.",
+                format_duration(minutes_until_start)
+            )
+        ));
     }
 
     // Check if meeting has passed its scheduled end time
@@ -652,6 +649,8 @@ async fn join_meeting_internal(
                         join_token: String::new(),
                         livekit_url: String::new(),
                         room_name: meeting.meeting_identifier.clone(),
+                        access_token: None,
+                        refresh_token: None,
                     },
                 }));
             }
@@ -665,6 +664,15 @@ async fn join_meeting_internal(
                     existing.role == ParticipantRole::Host,
                 )?;
 
+                // Helper to generate guest tokens if needed
+                let (access_token, refresh_token) = if existing.user_id.is_none() {
+                    let acc = state.jwt_service.generate_access_token(existing.id, "guest")?;
+                    let reference = state.jwt_service.generate_refresh_token(existing.id, "guest")?;
+                    (Some(acc), Some(reference))
+                } else {
+                    (None, None)
+                };
+
                 return Ok(Json(ApiResponse {
                     success: true,
                     data: JoinMeetingResponse {
@@ -674,6 +682,8 @@ async fn join_meeting_internal(
                         join_token,
                         livekit_url: state.livekit_service.get_url().to_string(),
                         room_name: room_name.clone(),
+                        access_token,
+                        refresh_token,
                     },
                 }));
             }
@@ -713,6 +723,22 @@ async fn join_meeting_internal(
 
     // If participant is in waiting room, return a different response
     if initial_status == ParticipantStatus::Waiting {
+        // Generate guest tokens even for waiting room?
+        // Yes, they might need to poll "waiting status" or "chat" if allowed?
+        // Actually, waiting participants usually can't do much.
+        // But if we want them to sustain a session, we should probably give them a token.
+        // However, `auth_middleware` checks for "guest" role against `Participants`.
+        // If they are in `Participants` table, they are valid.
+        
+        // Let's issue tokens for guests in waiting room too, so they can poll cleanly.
+        let (access_token, refresh_token) = if payload.user_id.is_none() {
+            let acc = state.jwt_service.generate_access_token(participant_id, "guest")?;
+            let reference = state.jwt_service.generate_refresh_token(participant_id, "guest")?;
+            (Some(acc), Some(reference))
+        } else {
+            (None, None)
+        };
+
         return Ok(Json(ApiResponse {
             success: true,
             data: JoinMeetingResponse {
@@ -722,6 +748,8 @@ async fn join_meeting_internal(
                 join_token: String::new(), // No token for waiting room
                 livekit_url: String::new(),
                 room_name: meeting.meeting_identifier.clone(),
+                access_token,
+                refresh_token,
             },
         }));
     }
@@ -773,6 +801,15 @@ async fn join_meeting_internal(
         is_host,
     )?;
 
+    // Generate guest tokens if needed
+    let (access_token, refresh_token) = if payload.user_id.is_none() {
+        let acc = state.jwt_service.generate_access_token(participant_id, "guest")?;
+        let reference = state.jwt_service.generate_refresh_token(participant_id, "guest")?;
+        (Some(acc), Some(reference))
+    } else {
+        (None, None)
+    };
+
     let response = JoinMeetingResponse {
         meeting_id: meeting.id,
         participant_id,
@@ -780,6 +817,8 @@ async fn join_meeting_internal(
         join_token,
         livekit_url: state.livekit_service.get_url().to_string(),
         room_name: room_name.clone(),
+        access_token,
+        refresh_token,
     };
 
     Ok(Json(ApiResponse {
@@ -902,7 +941,7 @@ pub async fn end_meeting(
         (status = 400, description = "Validation error - Invalid user_id or display_name"),
         (status = 403, description = "Private meeting - guests not allowed"),
         (status = 404, description = "Meeting not found"),
-        (status = 409, description = "Meeting has ended, cancelled, too early to join, or past scheduled end time")
+        (status = 409, description = "Meeting has ended, cancelled, hasn't started yet, or past scheduled end time")
     )
 )]
 pub async fn join_meeting_by_identifier(

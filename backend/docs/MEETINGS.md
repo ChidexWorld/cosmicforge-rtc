@@ -333,7 +333,9 @@ POST /api/v1/meetings/{id}/join
     "role": "participant",
     "join_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "livekit_url": "wss://your-project.livekit.cloud",
-    "room_name": "ABCD1234"
+    "room_name": "ABCD1234",
+    "access_token": "eyJhbGci...",
+    "refresh_token": "eyJhbGci..."
   }
 }
 ```
@@ -377,7 +379,9 @@ POST /api/v1/meetings/join/{meeting_identifier}
     "role": "participant",
     "join_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "livekit_url": "wss://your-project.livekit.cloud",
-    "room_name": "ABCD1234"
+    "room_name": "ABCD1234",
+    "access_token": "eyJhbGci...",
+    "refresh_token": "eyJhbGci..."
   }
 }
 ```
@@ -394,7 +398,7 @@ POST /api/v1/meetings/join/{meeting_identifier}
 
 - Meeting must exist
 - Meeting cannot be ended or cancelled
-- **Cannot join more than 15 minutes before scheduled start time**
+- **Cannot join scheduled meetings before scheduled start time**
 - **Cannot join after scheduled end time has passed**
 - Private meetings require authenticated user
 - If `user_id` is provided, the user must exist in the database
@@ -529,9 +533,10 @@ All meeting events are logged to `session_logs` table:
 
 **Early Join Prevention:**
 
-- Users cannot join more than **15 minutes before** the scheduled start time
+- Users cannot join scheduled meetings **before** the scheduled start time
 - Applies only to meetings with status = `scheduled`
-- Returns helpful error message with minutes remaining
+- Returns helpful error message with countdown to start time
+- **Wait Time**: Users must wait until `start_time` is reached
 
 **Late Join Prevention:**
 
@@ -545,15 +550,15 @@ All meeting events are logged to `session_logs` table:
 
 ```
 Meeting: start=10:00 AM
-Current: 09:30 AM (30 min before)
-Result: ❌ "Meeting hasn't started yet. You can join up to 15 minutes before..."
+Current: 09:59 AM
+Result: ❌ "Meeting hasn't started yet. Please try again in 1 minute."
 ```
 
 **Scenario 2: Join Window**
 
 ```
 Meeting: start=10:00 AM
-Current: 09:50 AM (10 min before)
+Current: 10:00 AM
 Result: ✅ Allowed - Meeting transitions to ongoing
 ```
 
@@ -688,8 +693,8 @@ if meeting.status == MeetingStatus::Ended {
 
 // 2. Early join prevention (scheduled meetings only)
 if meeting.status == MeetingStatus::Scheduled {
-    if now < start_time - Duration::minutes(15) {
-        return Err("Too early to join");
+    if now < start_time {
+        return Err("Meeting hasn't started yet");
     }
 }
 

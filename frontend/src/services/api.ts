@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosRequestConfig } from "axios";
 import { cookieStore, storageStore } from "@/store";
 
 // Public API instance (no auth interceptors)
@@ -113,7 +113,18 @@ api.interceptors.response.use(
       processQueue(refreshError, null);
       cookieStore.clearTokens();
       storageStore.clearUser();
-      if (typeof window !== "undefined") {
+      // Only redirect if the request didn't explicitly opt-out
+      // Note: Custom config properties like skipAuthRedirect might be stripped by Axios in error.config,
+      // so we also check the URL for endpoints that should fail gracefully.
+      const shouldSkipRedirect =
+        (originalRequest as AxiosRequestConfig & { skipAuthRedirect?: boolean })
+          .skipAuthRedirect ||
+        originalRequest?.url?.includes("/users/me") ||
+        (typeof window !== "undefined" &&
+          (window.location.pathname.includes("/room/") ||
+            window.location.pathname.includes("/join")));
+
+      if (typeof window !== "undefined" && !shouldSkipRedirect) {
         window.location.href = "/login";
       }
       return Promise.reject(refreshError);

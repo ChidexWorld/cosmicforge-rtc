@@ -37,10 +37,10 @@ CosmicForge RTC provides a REST API that allows third-party applications to:
 
 ### Authentication Methods
 
-| Method | Use Case | Header |
-|--------|----------|--------|
+| Method        | Use Case                          | Header                          |
+| ------------- | --------------------------------- | ------------------------------- |
 | **JWT Token** | Logged-in users in CosmicForge UI | `Authorization: Bearer {token}` |
-| **API Key** | Third-party server integrations | `Api-Key: {key}` |
+| **API Key**   | Third-party server integrations   | `Api-Key: {key}`                |
 
 **This guide focuses on API Key authentication for third-party integrations.**
 
@@ -82,6 +82,7 @@ curl -X POST https://api.cosmicforge.com/api/v1/api-keys \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -135,13 +136,13 @@ curl -X POST https://api.cosmicforge.com/api/v1/api/meetings \
 
 ### Authentication Errors
 
-| Status | Error | Description |
-|--------|-------|-------------|
-| 401 | `Missing Api-Key header` | No Api-Key header provided |
-| 401 | `Invalid API key` | Key not found in database |
-| 401 | `API key has been revoked` | Key was revoked by owner |
-| 401 | `API key has expired` | Key passed expiration date |
-| 403 | `API key usage limit exceeded` | Usage count reached limit |
+| Status | Error                          | Description                |
+| ------ | ------------------------------ | -------------------------- |
+| 401    | `Missing Api-Key header`       | No Api-Key header provided |
+| 401    | `Invalid API key`              | Key not found in database  |
+| 401    | `API key has been revoked`     | Key was revoked by owner   |
+| 401    | `API key has expired`          | Key passed expiration date |
+| 403    | `API key usage limit exceeded` | Usage count reached limit  |
 
 ---
 
@@ -156,12 +157,14 @@ POST /api/v1/api/meetings
 ```
 
 **Headers:**
+
 ```
 Api-Key: {your-api-key}
 Content-Type: application/json
 ```
 
 **Request Body:**
+
 ```json
 {
   "title": "Team Standup",
@@ -175,15 +178,16 @@ Content-Type: application/json
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `title` | string | Yes | Meeting title (1-200 chars) |
-| `start_time` | ISO 8601 | Yes | Must be at least 1 minute in future |
-| `end_time` | ISO 8601 | No | Must be after start_time, max 24h duration |
-| `is_private` | boolean | No | Default: false. If true, guests cannot join |
-| `metadata` | object | No | Custom key-value data |
+| Field        | Type     | Required | Description                                 |
+| ------------ | -------- | -------- | ------------------------------------------- |
+| `title`      | string   | Yes      | Meeting title (1-200 chars)                 |
+| `start_time` | ISO 8601 | Yes      | Must be at least 1 minute in future         |
+| `end_time`   | ISO 8601 | No       | Must be after start_time, max 24h duration  |
+| `is_private` | boolean  | No       | Default: false. If true, guests cannot join |
+| `metadata`   | object   | No       | Custom key-value data                       |
 
 **Response (201 Created):**
+
 ```json
 {
   "success": true,
@@ -208,6 +212,7 @@ Content-Type: application/json
 ```
 
 **Key Fields:**
+
 - `join_url` - Redirect users here to join the meeting
 - `meeting_identifier` - 8-character code for sharing
 - `id` - UUID for API operations
@@ -223,26 +228,30 @@ POST /api/v1/api/meetings/{id}/join
 ```
 
 **Headers:**
+
 ```
 Api-Key: {your-api-key}
 Content-Type: application/json
 ```
 
 **URL Parameters:**
+
 - `{id}` - Meeting UUID
 
 **Request Body:**
+
 ```json
 {
   "display_name": "John Doe"
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `display_name` | string | Yes | Name shown to other participants (1-100 chars) |
+| Field          | Type   | Required | Description                                    |
+| -------------- | ------ | -------- | ---------------------------------------------- |
+| `display_name` | string | Yes      | Name shown to other participants (1-100 chars) |
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -251,15 +260,23 @@ Content-Type: application/json
     "role": "host",
     "join_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "livekit_url": "wss://livekit.cosmicforge.com",
-    "room_name": "ABCD1234"
+    "room_name": "ABCD1234",
+    "access_token": "eyJhbG.. (for guests)",
+    "refresh_token": "eyJhbG.. (for guests)"
   }
 }
 ```
 
 **Key Fields:**
+
 - `join_token` - Short-lived token for LiveKit WebSocket connection
 - `livekit_url` - WebSocket URL for LiveKit server
 - `role` - Either "host" or "participant"
+
+**Validation Rules:**
+
+- Users cannot join scheduled meetings **before** the start time
+- Users cannot join **after** the scheduled end time
 
 > **Note**: For most integrations, redirect users to `join_url` instead of using this endpoint directly. This endpoint is for advanced integrations building custom UIs.
 
@@ -276,9 +293,11 @@ GET /api/v1/meetings/public/{meeting_identifier}
 **No authentication required.**
 
 **URL Parameters:**
+
 - `{meeting_identifier}` - 8-character meeting code (e.g., ABCD1234)
 
 **Response (200 OK):**
+
 ```json
 {
   "success": true,
@@ -370,6 +389,7 @@ curl -X GET https://api.cosmicforge.com/api/v1/api-keys \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -396,6 +416,7 @@ curl -X DELETE https://api.cosmicforge.com/api/v1/api-keys/{id} \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -421,26 +442,26 @@ curl -X DELETE https://api.cosmicforge.com/api/v1/api-keys/{id} \
 
 ### Error Codes
 
-| HTTP Status | Code | Description |
-|-------------|------|-------------|
-| 400 | `VALIDATION_ERROR` | Invalid request body |
-| 401 | `UNAUTHORIZED` | Missing or invalid authentication |
-| 403 | `FORBIDDEN` | API key limit exceeded or access denied |
-| 404 | `NOT_FOUND` | Meeting not found |
-| 409 | `CONFLICT` | Meeting already ended or invalid state |
-| 500 | `INTERNAL_ERROR` | Server error |
+| HTTP Status | Code               | Description                             |
+| ----------- | ------------------ | --------------------------------------- |
+| 400         | `VALIDATION_ERROR` | Invalid request body                    |
+| 401         | `UNAUTHORIZED`     | Missing or invalid authentication       |
+| 403         | `FORBIDDEN`        | API key limit exceeded or access denied |
+| 404         | `NOT_FOUND`        | Meeting not found                       |
+| 409         | `CONFLICT`         | Meeting already ended or invalid state  |
+| 500         | `INTERNAL_ERROR`   | Server error                            |
 
 ### Handling Errors in Code
 
 ```javascript
 async function createMeeting(title, startTime) {
   const response = await fetch(`${API_URL}/api/v1/api/meetings`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Api-Key': process.env.COSMICFORGE_API_KEY,
-      'Content-Type': 'application/json'
+      "Api-Key": process.env.COSMICFORGE_API_KEY,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({ title, start_time: startTime })
+    body: JSON.stringify({ title, start_time: startTime }),
   });
 
   const data = await response.json();
@@ -448,9 +469,9 @@ async function createMeeting(title, startTime) {
   if (!response.ok) {
     switch (response.status) {
       case 401:
-        throw new Error('API key is invalid or expired');
+        throw new Error("API key is invalid or expired");
       case 403:
-        throw new Error('API key usage limit exceeded');
+        throw new Error("API key usage limit exceeded");
       case 400:
         throw new Error(`Validation error: ${data.error.message}`);
       default:
@@ -470,11 +491,11 @@ async function createMeeting(title, startTime) {
 
 ```javascript
 // ❌ WRONG - Never do this
-const API_KEY = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef...';
-fetch('/api/meetings', { headers: { 'Api-Key': API_KEY } });
+const API_KEY = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef...";
+fetch("/api/meetings", { headers: { "Api-Key": API_KEY } });
 
 // ✅ CORRECT - Call your own backend
-fetch('/your-backend/create-meeting', { method: 'POST' });
+fetch("/your-backend/create-meeting", { method: "POST" });
 ```
 
 ### 2. Use Environment Variables
@@ -496,6 +517,7 @@ COSMICFORGE_API_KEY=your-key-here
 ### 4. Monitor Usage
 
 Regularly check your API key usage:
+
 - Watch for unexpected spikes
 - Set appropriate usage limits
 - Use different keys for different environments (dev/staging/prod)
@@ -512,29 +534,31 @@ Always use HTTPS in production to encrypt API keys in transit.
 
 ```javascript
 // server.js
-const express = require('express');
+const express = require("express");
 const app = express();
 
 const COSMICFORGE_API_KEY = process.env.COSMICFORGE_API_KEY;
-const COSMICFORGE_API_URL = process.env.COSMICFORGE_API_URL || 'https://api.cosmicforge.com';
+const COSMICFORGE_API_URL =
+  process.env.COSMICFORGE_API_URL || "https://api.cosmicforge.com";
 
 app.use(express.json());
 
 // Create meeting endpoint for your frontend
-app.post('/api/meetings', async (req, res) => {
+app.post("/api/meetings", async (req, res) => {
   try {
     const response = await fetch(`${COSMICFORGE_API_URL}/api/v1/api/meetings`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Api-Key': COSMICFORGE_API_KEY,
-        'Content-Type': 'application/json'
+        "Api-Key": COSMICFORGE_API_KEY,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         title: req.body.title,
-        start_time: req.body.start_time || new Date(Date.now() + 5 * 60000).toISOString(),
+        start_time:
+          req.body.start_time || new Date(Date.now() + 5 * 60000).toISOString(),
         end_time: req.body.end_time,
-        is_private: req.body.is_private || false
-      })
+        is_private: req.body.is_private || false,
+      }),
     });
 
     const data = await response.json();
@@ -549,16 +573,16 @@ app.post('/api/meetings', async (req, res) => {
       meeting_code: data.data.meeting_identifier,
       join_url: data.data.join_url,
       title: data.data.title,
-      start_time: data.data.start_time
+      start_time: data.data.start_time,
     });
   } catch (error) {
-    console.error('CosmicForge API error:', error);
-    res.status(500).json({ error: 'Failed to create meeting' });
+    console.error("CosmicForge API error:", error);
+    res.status(500).json({ error: "Failed to create meeting" });
   }
 });
 
 app.listen(3001, () => {
-  console.log('Server running on port 3001');
+  console.log("Server running on port 3001");
 });
 ```
 
@@ -617,6 +641,7 @@ if __name__ == '__main__':
 ### cURL Examples
 
 **Create a meeting:**
+
 ```bash
 curl -X POST https://api.cosmicforge.com/api/v1/api/meetings \
   -H "Api-Key: YOUR_API_KEY_HERE" \
@@ -628,6 +653,7 @@ curl -X POST https://api.cosmicforge.com/api/v1/api/meetings \
 ```
 
 **Get public meeting info:**
+
 ```bash
 curl -X GET https://api.cosmicforge.com/api/v1/meetings/public/ABCD1234
 ```
@@ -644,6 +670,6 @@ curl -X GET https://api.cosmicforge.com/api/v1/meetings/public/ABCD1234
 
 ## Changelog
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2026-01-24 | Initial API release |
+| Version | Date       | Changes             |
+| ------- | ---------- | ------------------- |
+| 1.0.0   | 2026-01-24 | Initial API release |

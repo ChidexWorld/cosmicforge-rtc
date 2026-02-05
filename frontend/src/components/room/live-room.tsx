@@ -21,7 +21,9 @@ import FooterControls from "@/components/room/footer-controls";
 import type { JoinMeetingData } from "@/types/meeting";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { useMeeting } from "@/hooks";
+import { usePublicMeeting } from "@/hooks";
+
+// ...
 
 interface LiveRoomProps {
   joinData: JoinMeetingData;
@@ -31,7 +33,9 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Poll meeting status to auto-redirect if meeting ends
-  const { data: meetingData } = useMeeting(joinData.meeting_id);
+  // We use usePublicMeeting because useMeeting requires authentication,
+  // which would fail for guest users.
+  const { data: meetingData } = usePublicMeeting(joinData.room_name);
 
   useEffect(() => {
     if (meetingData?.data?.status === "ended") {
