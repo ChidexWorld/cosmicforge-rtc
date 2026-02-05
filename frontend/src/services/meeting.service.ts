@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { publicApi } from "./api";
 import type {
   MeetingsParams,
   MeetingsResponse,
@@ -28,7 +28,7 @@ export const meetingService = {
 
   // GET /meetings/public/:meeting_identifier — get public meeting info
   getPublicMeeting: async (meetingIdentifier: string) => {
-    const response = await api.get<MeetingResponse>(
+    const response = await publicApi.get<MeetingResponse>(
       `/meetings/public/${meetingIdentifier}`,
     );
     return response.data;
@@ -42,7 +42,7 @@ export const meetingService = {
 
   // POST /meetings/join/:meeting_identifier — join a meeting
   joinMeeting: async (meetingIdentifier: string, data: JoinMeetingRequest) => {
-    const response = await api.post<JoinMeetingResponse>(
+    const response = await publicApi.post<JoinMeetingResponse>(
       `/meetings/join/${meetingIdentifier}`,
       data,
     );
