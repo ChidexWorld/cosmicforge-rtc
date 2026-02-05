@@ -7,6 +7,7 @@ use utoipa_swagger_ui::SwaggerUi;
     paths(
         // General endpoints
         crate::handlers::root::get_app_info,
+        crate::handlers::root::health_check,
         // Authentication endpoints
         crate::handlers::auth::register,
         crate::handlers::auth::verify_email,

@@ -20,10 +20,25 @@
    Create/edit `.env` file:
 
    ```env
+   # Environment
+   APP_ENV=dev
+
+   # Database
    DATABASE_URL=postgres://username:password@host:port/database?sslmode=require
+
+   # Server
    JWT_SECRET=your-secret-key-change-this-in-production
    HOST=127.0.0.1
    PORT=8080
+
+   # Frontend URLs (comma-separated for CORS)
+   FRONTEND_URLS=http://localhost:3000,http://localhost:3001
+
+   # Primary app URL (used for email links, join URLs, etc.)
+   APP_URL=http://localhost:3000
+
+   # Backend URL (for production Swagger UI - only needed when APP_ENV=prod)
+   # BACKEND_URL=https://cosmicforge-rtc-api.vercel.app
 
    # Optional: Email configuration
    SMTP_HOST=smtp.gmail.com
@@ -32,7 +47,6 @@
    SMTP_PASSWORD=your-app-password
    SMTP_FROM_EMAIL=noreply@cosmicforge.com
    SMTP_FROM_NAME=CosmicForge
-   APP_URL=http://localhost:3000
    ```
 
 3. **Build the project**:
@@ -50,11 +64,14 @@
    ```
 
 5. **Start the server**:
+
    ```bash
    cargo run
    ```
 
 6. **Access the API**:
+   - Root: http://localhost:8080/
+   - Health Check: http://localhost:8080/health
    - API: http://localhost:8080/api/v1
    - Swagger UI: http://localhost:8080/swagger-ui
    - OpenAPI Spec: http://localhost:8080/api-docs/openapi.json
@@ -163,17 +180,17 @@ backend/
 
 ## Database Tables Overview
 
-| Table                   | Purpose                    | Key Features                     |
-| ----------------------- | -------------------------- | -------------------------------- |
-| **users**               | User accounts              | Local + OAuth auth, verification |
-| **meetings**            | Video conferences          | Lifecycle status, metadata       |
-| **participants**        | Meeting attendees          | Guest support, real-time states  |
-| **audio_video_devices** | Media devices              | Device tracking per participant  |
-| **chat_messages**       | In-meeting chat            | Text communication               |
-| **session_logs**        | Event logging              | Comprehensive audit trail        |
-| **webhooks**            | Event notifications        | User-specific, signed payloads   |
-| **api_keys**            | API access                 | Usage tracking, expiration       |
-| **email_jobs**          | Email queue                | Retry, dead-letter, idempotency  |
+| Table                   | Purpose             | Key Features                     |
+| ----------------------- | ------------------- | -------------------------------- |
+| **users**               | User accounts       | Local + OAuth auth, verification |
+| **meetings**            | Video conferences   | Lifecycle status, metadata       |
+| **participants**        | Meeting attendees   | Guest support, real-time states  |
+| **audio_video_devices** | Media devices       | Device tracking per participant  |
+| **chat_messages**       | In-meeting chat     | Text communication               |
+| **session_logs**        | Event logging       | Comprehensive audit trail        |
+| **webhooks**            | Event notifications | User-specific, signed payloads   |
+| **api_keys**            | API access          | Usage tracking, expiration       |
+| **email_jobs**          | Email queue         | Retry, dead-letter, idempotency  |
 
 ## Code Examples
 

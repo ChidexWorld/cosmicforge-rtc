@@ -86,11 +86,23 @@ async fn main() -> anyhow::Result<()> {
     let _meeting_auto_start_worker = spawn_meeting_auto_start_worker(db.clone());
     tracing::info!("✅ Meeting auto-start worker started");
 
-    // Configure CORS
+    // Configure CORS - allow frontend(s) to access API
+    let allowed_origins: Vec<axum::http::HeaderValue> = app_config
+        .frontend_urls
+        .iter()
+        .filter_map(|url| url.parse().ok())
+        .collect();
+
+    tracing::info!(
+        "🔒 CORS configured for origins: {:?}",
+        app_config.frontend_urls
+    );
+
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(allowed_origins)
         .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_headers(Any)
+        .allow_credentials(true);
 
     // Start server
     let addr = app_config.server_addr();

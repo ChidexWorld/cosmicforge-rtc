@@ -153,6 +153,8 @@ The schema includes 9 tables:
 - **Email Queue** - Async email delivery with retry and dead-letter queue
 - **API Management** - Usage tracking and rate limiting
 - **LiveKit Integration** - Real-time video/audio via WebRTC SFU
+- **Multi-Origin CORS** - Supports multiple frontend URLs for flexible deployment
+- **Health Monitoring** - Built-in health check endpoint for load balancers
 
 ## Project Structure
 

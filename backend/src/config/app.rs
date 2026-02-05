@@ -19,6 +19,9 @@ pub struct AppConfig {
     /// Server port
     pub port: u16,
 
+    /// Frontend URLs for CORS (comma-separated in env)
+    pub frontend_urls: Vec<String>,
+
     /// Frontend/Hosted UI URL (e.g., https://meet.cosmicforge.com)
     pub app_url: String,
 
@@ -51,6 +54,13 @@ impl AppConfig {
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .map_err(|_| ApiError::InternalError("Invalid PORT".to_string()))?,
+
+            frontend_urls: std::env::var("FRONTEND_URLS")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string())
+                .split(',')
+                .map(|s| s.trim().trim_end_matches('/').to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
 
             app_url: std::env::var("APP_URL")
                 .unwrap_or_else(|_| "http://localhost:3000".to_string())
