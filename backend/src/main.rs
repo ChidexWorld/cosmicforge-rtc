@@ -1,4 +1,5 @@
 use axum::Router;
+use axum::http::{header, Method}; // Add this line
 use backend::config::logging;
 use dotenvy::dotenv;
 use sea_orm::{ConnectOptions, Database};
@@ -100,8 +101,21 @@ async fn main() -> anyhow::Result<()> {
 
     let cors = CorsLayer::new()
         .allow_origin(allowed_origins)
-        .allow_methods(Any)
-        .allow_headers(Any)
+        .allow_methods([
+            Method::GET, 
+            Method::POST, 
+            Method::PUT, 
+            Method::DELETE, 
+            Method::OPTIONS, 
+            Method::PATCH
+        ])
+        // Specify the exact headers your frontend will send
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            header::ACCEPT,
+            header::ORIGIN,
+        ])
         .allow_credentials(true);
 
     // Start server
