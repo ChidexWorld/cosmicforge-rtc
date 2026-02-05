@@ -76,7 +76,7 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
 
           {/* Conditional Sidebar */}
           {isSidebarOpen && (
-            <aside className="fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 bg-white shadow-2xl sm:shadow-none sm:relative sm:z-0 border-l border-gray-200 flex flex-col h-full transition-all duration-300">
+            <aside className="fixed inset-y-0 right-0 z-50 w-[85%] sm:w-80 bg-white sm:bg-transparent shadow-2xl sm:shadow-none sm:relative sm:z-0 border-l sm:border-none border-gray-200 flex flex-col h-full transition-all duration-300 sm:p-4">
               <Sidebar
                 meetingId={joinData.meeting_id}
                 isHost={joinData.role === "host"}
