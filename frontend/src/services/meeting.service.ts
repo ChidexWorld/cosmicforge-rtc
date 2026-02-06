@@ -11,6 +11,7 @@ import type {
   WaitingListResponse,
   ParticipantActionResponse,
   ParticipantsListResponse,
+  ChatMessage,
 } from "@/types/meeting";
 
 export const meetingService = {
@@ -139,7 +140,7 @@ export const meetingService = {
 
   // GET /meetings/:id/chat — get chat messages
   getChatMessages: async (meetingId: string) => {
-    const response = await api.get<{ success: boolean; data: any[] }>(
+    const response = await api.get<{ success: boolean; data: ChatMessage[] }>(
       `/meetings/${meetingId}/chat`,
     );
     return response.data;
@@ -154,7 +155,7 @@ export const meetingService = {
     const response = await api.post<{
       success: boolean;
       message: string;
-      data: any;
+      data: ChatMessage;
     }>(`/meetings/${meetingId}/chat`, {
       participant_id: participantId,
       message,

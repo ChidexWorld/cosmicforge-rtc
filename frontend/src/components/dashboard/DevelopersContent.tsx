@@ -54,7 +54,7 @@ export default function DevelopersContent() {
               <p>
                 CosmicForge RTC is a developer-first platform designed to
                 simplify the integration of real-time audio and video
-                communications into your applications. Whether you're building a
+                communications into your applications. Whether you&apos;re building a
                 telehealth platform, an educational tool, or a social video app,
                 specific infrastructure often becomes a bottleneck.
               </p>
@@ -173,12 +173,12 @@ export default function DevelopersContent() {
                   {"{"}
                   <br />
                   &nbsp;&nbsp;<span className="text-blue-400">
-                    "title"
+                    &quot;title&quot;
                   </span>:{" "}
-                  <span className="text-green-400">"My First Meeting"</span>,
+                  <span className="text-green-400">&quot;My First Meeting&quot;</span>,
                   <br />
                   &nbsp;&nbsp;
-                  <span className="text-blue-400">"is_private"</span>:{" "}
+                  <span className="text-blue-400">&quot;is_private&quot;</span>:{" "}
                   <span className="text-blue-500">false</span>
                   <br />
                   {"}"}

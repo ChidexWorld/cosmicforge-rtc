@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { meetingService } from "@/services/meeting.service";
 import { useRoomContext } from "@livekit/components-react";
 import { RoomEvent } from "livekit-client";
+import type { ChatMessage } from "@/types/meeting";
 
 export function useChat(meetingId: string, participantId: string) {
-  const queryClient = useQueryClient();
   const room = useRoomContext();
-  const [realtimeMessages, setRealtimeMessages] = useState<any[]>([]);
+  const [realtimeMessages, setRealtimeMessages] = useState<ChatMessage[]>([]);
 
   // Load history from backend
   const { data: historyData, isLoading } = useQuery({
@@ -22,9 +22,9 @@ export function useChat(meetingId: string, participantId: string) {
 
     const handleDataReceived = (
       payload: Uint8Array,
-      participant: any,
-      kind: any,
-      topic?: string,
+      _participant?: unknown,
+      _kind?: unknown,
+      _topic?: string,
     ) => {
       try {
         const strData = new TextDecoder().decode(payload);
@@ -34,10 +34,10 @@ export function useChat(meetingId: string, participantId: string) {
           setRealtimeMessages((prev) => {
             // Dedupe
             if (prev.some((m) => m.id === data.id)) return prev;
-            return [...prev, data];
+            return [...prev, data as ChatMessage];
           });
         }
-      } catch (e) {
+      } catch {
         // Ignore non-chat data packets
       }
     };
@@ -87,7 +87,7 @@ export function useChat(meetingId: string, participantId: string) {
     combined.forEach((m) => uniqueMap.set(m.id, m));
 
     return Array.from(uniqueMap.values()).sort(
-      (a: any, b: any) =>
+      (a: ChatMessage, b: ChatMessage) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
   }, [historyData, realtimeMessages]);

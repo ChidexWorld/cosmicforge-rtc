@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Suspense } from "react";
 import { useGoogleCallback } from "@/hooks";
 import { Spinner } from "@/components/ui/spinner";
 
 function GoogleCallbackContent() {
-  const router = useRouter();
   const { error } = useGoogleCallback();
 
   if (error) {

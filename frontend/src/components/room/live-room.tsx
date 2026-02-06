@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 import {
   LiveKitRoom,
-  VideoConference,
   GridLayout,
   ParticipantTile,
   RoomAudioRenderer,
-  ControlBar,
   useTracks,
   LayoutContextProvider,
   useParticipantContext,
+  useMaybeTrackRefContext,
   VideoTrack,
   ParticipantName,
   TrackMutedIndicator,
+  type TrackReference,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import Sidebar from "@/components/room/sidebar";
@@ -97,16 +97,21 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
 }
 
 function VideoGridContent() {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
+  const cameraTracks = useTracks(
+    [{ source: Track.Source.Camera, withPlaceholder: true }],
     { onlySubscribed: false },
   );
 
+  const screenShareTracks = useTracks(
+    [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
+    { onlySubscribed: false },
+  );
+
+  // Combine tracks with screen shares first for priority display
+  const allTracks = [...screenShareTracks, ...cameraTracks];
+
   return (
-    <GridLayout tracks={tracks} style={{ height: "100%" }}>
+    <GridLayout tracks={allTracks} style={{ height: "100%" }}>
       <ParticipantTile>
         <CustomTileContent />
       </ParticipantTile>
@@ -116,18 +121,49 @@ function VideoGridContent() {
 
 function CustomTileContent() {
   const participant = useParticipantContext();
+  const trackRef = useMaybeTrackRefContext();
+
   if (!participant) return null;
 
+  const isScreenShare = trackRef?.source === Track.Source.ScreenShare;
+  const cameraPublication = participant.getTrackPublication(
+    Track.Source.Camera,
+  );
+  const micPublication = participant.getTrackPublication(
+    Track.Source.Microphone,
+  );
+
+  // Handle screen share tracks
+  if (isScreenShare && trackRef) {
+    return (
+      <div className="relative w-full h-full">
+        <VideoTrack
+          trackRef={trackRef as TrackReference}
+          className="w-full h-full object-contain bg-black"
+        />
+        {/* Screen share label */}
+        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+          <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-2">
+            <span className="text-green-400">●</span>
+            <ParticipantName />
+            <span className="text-xs opacity-70">(Screen)</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle camera tracks (default behavior)
   return (
     <div className="relative w-full h-full">
-      {participant.isCameraEnabled ? (
+      {participant.isCameraEnabled && cameraPublication ? (
         <VideoTrack
           trackRef={
             {
               participant,
               source: Track.Source.Camera,
-              publication: participant.getTrackPublication(Track.Source.Camera),
-            } as any
+              publication: cameraPublication,
+            } as TrackReference
           }
           className="w-full h-full object-cover"
         />
@@ -147,18 +183,18 @@ function CustomTileContent() {
       <div className="absolute bottom-3 left-3 flex items-center gap-2">
         <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm flex items-center gap-2">
           <ParticipantName />
-          <TrackMutedIndicator
-            trackRef={
-              {
-                participant,
-                source: Track.Source.Microphone,
-                publication: participant.getTrackPublication(
-                  Track.Source.Microphone,
-                ),
-              } as any
-            }
-            className="opacity-70"
-          ></TrackMutedIndicator>
+          {micPublication && (
+            <TrackMutedIndicator
+              trackRef={
+                {
+                  participant,
+                  source: Track.Source.Microphone,
+                  publication: micPublication,
+                } as TrackReference
+              }
+              className="opacity-70"
+            />
+          )}
         </div>
       </div>
     </div>

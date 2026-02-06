@@ -1,9 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Video, Calendar, MoreVertical, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";

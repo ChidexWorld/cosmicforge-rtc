@@ -86,7 +86,7 @@ function ProfileSettings() {
       const data = await userService.getProfile();
       setProfile(data);
       setNewUsername(data.username);
-    } catch (err: any) {
+    } catch {
       setError("Failed to load profile");
     } finally {
       setLoading(false);
@@ -122,8 +122,16 @@ function ProfileSettings() {
           username: updated.username,
         });
       }
-    } catch (err: any) {
-      if (err.response?.status === 409) {
+    } catch (err) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "status" in err.response &&
+        err.response.status === 409
+      ) {
         setError("Username is already taken");
       } else {
         setError("Failed to update profile");
@@ -142,7 +150,7 @@ function ProfileSettings() {
       // Clear data and redirect
       storageStore.clearUser();
       router.push("/login");
-    } catch (err: any) {
+    } catch {
       setError("Failed to deactivate account");
       setDeactivating(false);
       setShowDeactivateDialog(false);

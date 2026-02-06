@@ -2,12 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Home, RefreshCw, AlertTriangle } from "lucide-react";
 
 export default function ServerError() {
-  const router = useRouter();
 
   const handleRetry = () => {
     // Hard reload to try to recover from potential state/cache issues or server recovery
@@ -33,7 +31,7 @@ export default function ServerError() {
 
         {/* Description */}
         <p className="text-gray-600 text-sm sm:text-base mb-8">
-          Oops! Something went wrong on our end. We're working to fix it. Please
+          Oops! Something went wrong on our end. We&apos;re working to fix it. Please
           try again later.
         </p>
 

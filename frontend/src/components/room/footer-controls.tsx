@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { MicVisualizer } from "../ui/mic-visualizer";
 import { useMediaControl } from "@/hooks";
 
@@ -40,17 +40,13 @@ export default function FooterControls({
   const { startScreenShare, stopScreenShare, updateAudio, updateVideo } =
     useMediaControl();
 
-  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
-
-  useEffect(() => {
-    if (microphoneTrack?.track?.mediaStreamTrack) {
-      setActiveStream(
-        new MediaStream([microphoneTrack.track.mediaStreamTrack]),
-      );
-    } else {
-      setActiveStream(null);
+  const mediaStreamTrack = microphoneTrack?.track?.mediaStreamTrack;
+  const activeStream = useMemo(() => {
+    if (mediaStreamTrack) {
+      return new MediaStream([mediaStreamTrack]);
     }
-  }, [microphoneTrack]);
+    return null;
+  }, [mediaStreamTrack]);
 
   const toggleMic = async () => {
     const newState = !isMicrophoneEnabled;

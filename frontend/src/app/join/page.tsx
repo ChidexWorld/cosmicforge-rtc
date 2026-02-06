@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Video } from "lucide-react";
@@ -85,12 +86,12 @@ export default function JoinPage() {
           <div className="text-center">
             <p className="text-sm text-[#00000080]">
               Want to create a meeting?{" "}
-              <a
+              <Link
                 href="/dashboard/schedule"
                 className="text-[#029CD4] hover:underline font-medium"
               >
                 Schedule one
-              </a>
+              </Link>
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from "axios";
+import axios from "axios";
 import { cookieStore, storageStore } from "@/store";
 
 // Public API instance (no auth interceptors)
@@ -62,19 +62,7 @@ api.interceptors.response.use(
       originalRequest._retry ||
       isAuthEndpoint
     ) {
-      // Global Error Handling for Upgrade/Network Issues
-      if (
-        typeof window !== "undefined" &&
-        !window.location.pathname.includes("/server-error")
-      ) {
-        // Redirect on 5xx errors or network errors (no response)
-        if (
-          (!error.response || error.response.status >= 500) &&
-          error.code !== "ERR_CANCELED"
-        ) {
-          window.location.href = "/server-error";
-        }
-      }
+      // Let components handle errors - no redirect
       return Promise.reject(error);
     }
 
@@ -113,20 +101,7 @@ api.interceptors.response.use(
       processQueue(refreshError, null);
       cookieStore.clearTokens();
       storageStore.clearUser();
-      // Only redirect if the request didn't explicitly opt-out
-      // Note: Custom config properties like skipAuthRedirect might be stripped by Axios in error.config,
-      // so we also check the URL for endpoints that should fail gracefully.
-      const shouldSkipRedirect =
-        (originalRequest as AxiosRequestConfig & { skipAuthRedirect?: boolean })
-          .skipAuthRedirect ||
-        originalRequest?.url?.includes("/users/me") ||
-        (typeof window !== "undefined" &&
-          (window.location.pathname.includes("/room/") ||
-            window.location.pathname.includes("/join")));
-
-      if (typeof window !== "undefined" && !shouldSkipRedirect) {
-        window.location.href = "/login";
-      }
+      // Don't redirect - let components handle auth state
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;

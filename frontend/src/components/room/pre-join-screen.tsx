@@ -10,7 +10,7 @@ import {
 import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
 import { useMediaStream } from "@/hooks/useMediaStream";
 import { MicVisualizer } from "@/components/ui/mic-visualizer";
@@ -30,8 +30,17 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   // State to track if user is in waiting room
   const [isWaiting, setIsWaiting] = useState(false);
 
+  // Get authenticated user info
+  const { data: profileData } = useProfile();
+  const storedUser = storageStore.getUser();
+
   // Display name state - auto-populated from profile/storage
-  const [displayName, setDisplayName] = useState("");
+  const [displayName, setDisplayName] = useState(
+    () => storedUser?.username || "",
+  );
+
+  // Track if we've already auto-filled from async profile data
+  const [hasAutoFilled, setHasAutoFilled] = useState(false);
 
   // UI error state
   const [error, setError] = useState("");
@@ -39,14 +48,8 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   // Ref for polling interval - used to check admission status
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { videoRef, streamRef, isCameraOn, isMicOn, toggleCamera, toggleMic } =
+  const { videoRef, stream, isCameraOn, isMicOn, toggleCamera, toggleMic } =
     useMediaStream({ video: true, audio: true });
-
-  // Get authenticated user info
-  const { data: profileData } = useProfile();
-  const storedUser = storageStore.getUser();
-
-  // ... rest of imports
 
   // Get public meeting info
   const { data: meetingInfo, isLoading: isLoadingMeeting } =
@@ -55,14 +58,15 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   // Join meeting mutation
   const joinMutation = useJoinMeeting();
 
-  // Set initial display name from user profile
+  // Auto-fill display name from profile data when it loads (only once)
+  // This is a legitimate use case: syncing state from async external source
   useEffect(() => {
-    if (profileData?.username) {
+    if (profileData?.username && !displayName && !hasAutoFilled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasAutoFilled(true);
       setDisplayName(profileData.username);
-    } else if (storedUser?.username) {
-      setDisplayName(storedUser.username);
     }
-  }, [profileData, storedUser]);
+  }, [profileData?.username, displayName, hasAutoFilled]);
 
   // Cleanup polling interval on unmount
   useEffect(() => {
@@ -162,11 +166,22 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
         // Host or admitted immediately - proceed to room
         onJoin(result.data);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Join error:", err);
-      const errorMessage =
-        err.response?.data?.error?.message ||
-        (err instanceof Error ? err.message : "Failed to join meeting");
+      let errorMessage = "Failed to join meeting";
+      if (
+        err &&
+        typeof err === "object" &&
+        "response" in err &&
+        err.response &&
+        typeof err.response === "object" &&
+        "data" in err.response
+      ) {
+        const data = err.response.data as { error?: { message?: string } };
+        errorMessage = data?.error?.message || errorMessage;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
       setError(errorMessage);
     }
   };
@@ -249,7 +264,7 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
                 <Mic className="w-3.5 h-3.5 text-green-400" />
                 <div className="h-3.5 flex items-center">
                   <MicVisualizer
-                    stream={streamRef.current}
+                    stream={stream}
                     isOn={isMicOn}
                     barColor="bg-green-400"
                     count={5}

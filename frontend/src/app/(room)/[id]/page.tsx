@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import LiveRoom from "@/components/room/live-room";
 import PreJoinScreen from "@/components/room/pre-join-screen";

@@ -4,21 +4,23 @@ import type { UpdateProfileRequest } from "@/types/user";
 import { AxiosError } from "axios";
 import { ApiErrorResponse } from "@/types/auth";
 
-import { cookieStore } from "@/store";
+import { storageStore } from "@/store";
 
 export function useProfile() {
-  const hasToken =
-    typeof window !== "undefined" && !!cookieStore.getAccessToken();
+  // Only fetch profile for authenticated users (not guests)
+  // Guests have tokens but no stored user info
+  const isAuthenticatedUser =
+    typeof window !== "undefined" && !!storageStore.getUser();
 
   return useQuery({
     queryKey: ["user-profile"],
     queryFn: () => userService.getProfile(),
     staleTime: Infinity, // never becomes stale
     gcTime: 1000 * 60 * 10, // keep cache for 10 mins
-    refetchOnWindowFocus: false, // User switched tabs? Don’t refetch.
-    refetchOnReconnect: false, //User switched tabs? Don’t refetch.
-    refetchOnMount: false, // Component remounted? Don’t refetch
-    enabled: hasToken,
+    refetchOnWindowFocus: false, // User switched tabs? Don't refetch.
+    refetchOnReconnect: false, // User switched tabs? Don't refetch.
+    refetchOnMount: false, // Component remounted? Don't refetch
+    enabled: isAuthenticatedUser,
     retry: false,
   });
 }

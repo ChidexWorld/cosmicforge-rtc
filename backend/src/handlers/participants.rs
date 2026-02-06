@@ -443,7 +443,7 @@ pub async fn update_audio(
     Path(participant_id): Path<Uuid>,
     Json(payload): Json<UpdateAudioRequest>,
 ) -> ApiResult<Json<MediaStateResponse>> {
-    let user_id = Uuid::parse_str(&claims.sub)
+    let subject_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     // Find participant
@@ -458,8 +458,18 @@ pub async fn update_audio(
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
 
-    let is_host = meeting.host_id == user_id;
-    let is_own_participant = participant.user_id == Some(user_id);
+    // Check permissions:
+    // - For guests: claims.sub is participant_id, so check if it matches
+    // - For users: claims.sub is user_id, check if they own this participant or are host
+    let is_guest = claims.role == "guest";
+    let is_own_participant = if is_guest {
+        // For guests, the token subject IS the participant_id
+        participant_id == subject_id
+    } else {
+        // For authenticated users, check user_id match
+        participant.user_id == Some(subject_id)
+    };
+    let is_host = !is_guest && meeting.host_id == subject_id;
 
     // Can only control own media or host can control any
     if !is_host && !is_own_participant {
@@ -523,7 +533,7 @@ pub async fn update_video(
     Path(participant_id): Path<Uuid>,
     Json(payload): Json<UpdateVideoRequest>,
 ) -> ApiResult<Json<MediaStateResponse>> {
-    let user_id = Uuid::parse_str(&claims.sub)
+    let subject_id = Uuid::parse_str(&claims.sub)
         .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
     // Find participant
@@ -538,8 +548,18 @@ pub async fn update_video(
         .await?
         .ok_or_else(|| ApiError::NotFound("Meeting not found".to_string()))?;
 
-    let is_host = meeting.host_id == user_id;
-    let is_own_participant = participant.user_id == Some(user_id);
+    // Check permissions:
+    // - For guests: claims.sub is participant_id, so check if it matches
+    // - For users: claims.sub is user_id, check if they own this participant or are host
+    let is_guest = claims.role == "guest";
+    let is_own_participant = if is_guest {
+        // For guests, the token subject IS the participant_id
+        participant_id == subject_id
+    } else {
+        // For authenticated users, check user_id match
+        participant.user_id == Some(subject_id)
+    };
+    let is_host = !is_guest && meeting.host_id == subject_id;
 
     // Can only control own media or host can control any
     if !is_host && !is_own_participant {

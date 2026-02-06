@@ -10,9 +10,11 @@ export function useMicLevel(isMicOn: boolean, stream: MediaStream | null) {
   const animFrameRef = useRef<number>(0);
   const levelRef = useRef(0);
 
+  // Sync with external audio API - legitimate use of setState in effect
   useEffect(() => {
     if (!isMicOn || !stream) {
       levelRef.current = 0;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRawLevel(0);
       return;
     }

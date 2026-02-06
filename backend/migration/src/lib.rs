@@ -13,6 +13,7 @@ mod m20260117_000001_create_email_jobs;
 mod m20260117_000002_add_reset_token_to_users;
 mod m20260127_000001_create_oauth_states;
 mod m20260205_110126_m20260205_000001_add_guest_role;
+mod m20260206_000001_add_media_toggle_event_type;
 
 pub struct Migrator;
 
@@ -32,6 +33,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260117_000002_add_reset_token_to_users::Migration),
             Box::new(m20260127_000001_create_oauth_states::Migration),
             Box::new(m20260205_110126_m20260205_000001_add_guest_role::Migration),
+            Box::new(m20260206_000001_add_media_toggle_event_type::Migration),
         ]
     }
 }

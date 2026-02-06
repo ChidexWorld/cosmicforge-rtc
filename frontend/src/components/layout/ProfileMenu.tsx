@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Settings, LogOut, User } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { useLogout, useProfile } from "@/hooks";
 import {
   Dialog,

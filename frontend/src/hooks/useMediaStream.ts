@@ -12,19 +12,21 @@ export function useMediaStream(
 ) {
   const [isCameraOn, setIsCameraOn] = useState(!!options.video);
   const [isMicOn, setIsMicOn] = useState(!!options.audio);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const startStream = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
-      streamRef.current = stream;
+      streamRef.current = mediaStream;
+      setStream(mediaStream);
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = mediaStream;
       }
     } catch (err) {
       console.error("Failed to access media devices:", err);
@@ -35,15 +37,17 @@ export function useMediaStream(
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      setStream(null);
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
   }, []);
 
-  // Start/stop camera
+  // Start/stop camera - sync with external media devices API
   useEffect(() => {
     if (isCameraOn) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       startStream();
     } else {
       stopStream();
@@ -73,6 +77,7 @@ export function useMediaStream(
   return {
     videoRef,
     streamRef,
+    stream,
     isCameraOn,
     isMicOn,
     toggleCamera,
