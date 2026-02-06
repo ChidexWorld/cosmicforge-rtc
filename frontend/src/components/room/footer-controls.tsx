@@ -1,5 +1,6 @@
 import {
   Volume2,
+  VolumeX,
   Upload,
   Mic,
   MicOff,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MicVisualizer } from "../ui/mic-visualizer";
 import { useMediaControl } from "@/hooks";
 
@@ -36,9 +37,20 @@ export default function FooterControls({
     microphoneTrack,
   } = useLocalParticipant();
   const room = useRoomContext();
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
 
   const { startScreenShare, stopScreenShare, updateAudio, updateVideo } =
     useMediaControl();
+
+  const toggleSpeaker = () => {
+    const newState = !isSpeakerOn;
+    setIsSpeakerOn(newState);
+    // Mute/unmute all audio elements in the room
+    const audioElements = document.querySelectorAll("audio");
+    audioElements.forEach((audio) => {
+      audio.muted = !newState;
+    });
+  };
 
   const mediaStreamTrack = microphoneTrack?.track?.mediaStreamTrack;
   const activeStream = useMemo(() => {
@@ -77,8 +89,19 @@ export default function FooterControls({
   return (
     <footer className="p-2 sm:p-6 flex items-center justify-center gap-2 sm:gap-4 bg-white border-t border-gray-100 z-10 relative">
       <div className="flex flex-wrap items-center justify-between w-full max-w-5xl rounded-lg gap-2 sm:gap-4 px-1 sm:px-6">
-        <Button className="p-2 sm:p-3 rounded-md bg-[#FAFAFB] text-sky-500 hover:bg-gray-200">
-          <Volume2 className="text-[#029CD4]" size={24} />
+        <Button
+          onClick={toggleSpeaker}
+          className={`p-2 sm:p-3 rounded-md transition-colors ${
+            !isSpeakerOn
+              ? "bg-red-50 text-red-500 hover:bg-red-100"
+              : "bg-[#FAFAFB] text-sky-500 hover:bg-gray-200"
+          }`}
+        >
+          {isSpeakerOn ? (
+            <Volume2 className="text-[#029CD4]" size={24} />
+          ) : (
+            <VolumeX className="text-red-500" size={24} />
+          )}
         </Button>
         <div className="flex items-center gap-2 sm:gap-4">
           <Button

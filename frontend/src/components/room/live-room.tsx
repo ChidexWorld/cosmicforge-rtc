@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   LiveKitRoom,
   GridLayout,
@@ -22,6 +22,7 @@ import type { JoinMeetingData } from "@/types/meeting";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { usePublicMeeting } from "@/hooks";
+import { cookieStore } from "@/store";
 
 // ...
 
@@ -31,6 +32,11 @@ interface LiveRoomProps {
 export default function LiveRoom({ joinData }: LiveRoomProps) {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const isDisconnectingRef = useRef(false);
+
+  // Guest detection: backend only returns access_token for guests
+  // Authenticated users (host or logged-in participants) don't receive tokens in join response
+  const isGuest = !!joinData.access_token;
 
   // Poll meeting status to auto-redirect if meeting ends
   // We use usePublicMeeting because useMeeting requires authentication,
@@ -38,10 +44,30 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
   const { data: meetingData } = usePublicMeeting(joinData.room_name);
 
   useEffect(() => {
+    if (isDisconnectingRef.current) return;
     if (meetingData?.data?.status === "ended") {
-      router.push("/dashboard");
+      isDisconnectingRef.current = true;
+      if (isGuest) {
+        cookieStore.clearTokens();
+        router.replace("/");
+      } else {
+        router.replace("/dashboard");
+      }
     }
-  }, [meetingData, router]);
+  }, [meetingData, router, isGuest]);
+
+  const handleDisconnect = useCallback(() => {
+    if (isDisconnectingRef.current) return;
+    isDisconnectingRef.current = true;
+    if (isGuest) {
+      // Guest: clear temporary tokens and go to home
+      cookieStore.clearTokens();
+      router.replace("/");
+    } else {
+      // Authenticated user/host: keep tokens and go to dashboard
+      router.replace("/dashboard");
+    }
+  }, [router, isGuest]);
 
   if (!joinData.join_token) {
     return (
@@ -60,7 +86,7 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
         serverUrl={joinData.livekit_url}
         data-lk-theme="default"
         style={{ height: "100vh" }}
-        onDisconnected={() => router.push("/dashboard")}
+        onDisconnected={handleDisconnect}
       >
         <div className="flex h-screen bg-white overflow-hidden">
           <div className="flex flex-col flex-1 overflow-hidden">
@@ -97,21 +123,16 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
 }
 
 function VideoGridContent() {
-  const cameraTracks = useTracks(
-    [{ source: Track.Source.Camera, withPlaceholder: true }],
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
     { onlySubscribed: false },
   );
-
-  const screenShareTracks = useTracks(
-    [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
-    { onlySubscribed: false },
-  );
-
-  // Combine tracks with screen shares first for priority display
-  const allTracks = [...screenShareTracks, ...cameraTracks];
 
   return (
-    <GridLayout tracks={allTracks} style={{ height: "100%" }}>
+    <GridLayout tracks={tracks} style={{ height: "100%" }}>
       <ParticipantTile>
         <CustomTileContent />
       </ParticipantTile>

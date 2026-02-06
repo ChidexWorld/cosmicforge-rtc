@@ -204,7 +204,7 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen bg-gray-50">
+    <div className="flex items-center justify-center h-screen my-10">
       <div className="flex flex-col items-center gap-8 w-full max-w-lg px-6">
         {/* Title */}
         <div className="text-center space-y-1">
