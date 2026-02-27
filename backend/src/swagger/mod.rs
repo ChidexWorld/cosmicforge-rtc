@@ -16,6 +16,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::handlers::auth::logout,
         crate::handlers::auth::resend_verification_email,
         crate::handlers::auth::forgot_password,
+        crate::handlers::auth::verify_reset_token,
         crate::handlers::auth::reset_password,
         // OAuth endpoints
         crate::handlers::auth::oauth_google_init,
@@ -29,6 +30,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::handlers::meetings::api_create_meeting,
         crate::handlers::meetings::api_join_meeting,
         // Meeting endpoints
+        crate::handlers::meetings::create_instant_meeting,
         crate::handlers::meetings::list_meetings,
         crate::handlers::meetings::create_meeting,
         crate::handlers::meetings::get_meeting,
@@ -55,6 +57,16 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::handlers::users::get_current_user,
         crate::handlers::users::update_current_user,
         crate::handlers::users::deactivate_account,
+        // Webhook endpoints
+        crate::handlers::webhooks::create_webhook,
+        crate::handlers::webhooks::list_webhooks,
+        crate::handlers::webhooks::update_webhook,
+        crate::handlers::webhooks::delete_webhook,
+        // Admin endpoints
+        crate::handlers::admin::list_users,
+        crate::handlers::admin::update_user,
+        crate::handlers::admin::list_meetings,
+        crate::handlers::admin::list_logs,
     ),
     components(
         schemas(
@@ -70,6 +82,8 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::dto::MessageResponse,
             crate::dto::ResendVerificationRequest,
             crate::dto::ForgotPasswordRequest,
+            crate::dto::VerifyResetTokenRequest,
+            crate::dto::VerifyResetTokenResponse,
             crate::dto::ResetPasswordRequest,
             // API Key schemas
             crate::dto::CreateApiKeyRequest,
@@ -83,6 +97,9 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::handlers::meetings::ApiCreateMeetingRequest,
             crate::handlers::meetings::ApiJoinMeetingRequest,
             // Meeting schemas
+            crate::dto::InstantMeetingRequest,
+            crate::dto::InstantMeetingResponse,
+            crate::dto::InstantMeetingApiResponse,
             crate::dto::CreateMeetingRequest,
             crate::dto::UpdateMeetingRequest,
             crate::dto::JoinMeetingRequest,
@@ -114,6 +131,24 @@ use utoipa_swagger_ui::SwaggerUi;
             // User schemas
             crate::dto::UserMeResponse,
             crate::dto::UpdateMeRequest,
+            // Webhook schemas
+            crate::dto::CreateWebhookRequest,
+            crate::dto::UpdateWebhookRequest,
+            crate::dto::WebhookResponse,
+            crate::dto::CreateWebhookResponse,
+            crate::dto::WebhookListResponse,
+            crate::dto::WebhookApiResponse,
+            crate::dto::CreateWebhookApiResponse,
+            // Admin schemas
+            crate::dto::AdminUserResponse,
+            crate::dto::AdminUpdateUserRequest,
+            crate::dto::AdminPaginationMeta,
+            crate::dto::AdminUserListResponse,
+            crate::dto::AdminUserApiResponse,
+            crate::dto::AdminMeetingResponse,
+            crate::dto::AdminMeetingListResponse,
+            crate::dto::AdminLogResponse,
+            crate::dto::AdminLogListResponse,
         )
     ),
     modifiers(&SecurityAddon),
@@ -126,7 +161,9 @@ use utoipa_swagger_ui::SwaggerUi;
         (name = "Waiting Room", description = "Admit/Deny participants from waiting room"),
         (name = "Media Control", description = "Control audio, video, and screen sharing"),
         (name = "Chat", description = "In-meeting chat with hybrid real-time architecture.\n\n## Architecture\n- **LiveKit Data Channels**: Real-time message delivery via `publishData()` and `RoomEvent.DataReceived`\n- **REST API**: Message persistence and history loading for late joiners\n\n## Flow\n1. **Send**: POST /chat (persist) → LiveKit publishData() (broadcast)\n2. **Receive**: Listen to RoomEvent.DataReceived for instant delivery\n3. **Late Join**: GET /chat to load message history\n\n## Notes\n- Messages are **volatile** - automatically deleted when meeting ends\n- Only participants with 'joined' status can send/receive messages"),
-        (name = "Users", description = "User profile management and account operations.\n\n## Endpoints\n- **GET /users/me**: Get current user profile\n- **PATCH /users/me**: Update profile (username only)\n- **POST /users/me/deactivate**: Deactivate account (soft delete)\n\n## Notes\n- All endpoints require JWT authentication\n- Deactivated users are blocked by auth middleware\n- Deactivation immediately invalidates all tokens")
+        (name = "Users", description = "User profile management and account operations.\n\n## Endpoints\n- **GET /users/me**: Get current user profile\n- **PATCH /users/me**: Update profile (username only)\n- **POST /users/me/deactivate**: Deactivate account (soft delete)\n\n## Notes\n- All endpoints require JWT authentication\n- Deactivated users are blocked by auth middleware\n- Deactivation immediately invalidates all tokens"),
+        (name = "Webhooks", description = "Webhook management for event notifications.\n\n## Events\n- `meeting_start`: Triggered when a meeting begins\n- `meeting_end`: Triggered when a meeting ends\n- `participant_join`: Triggered when a participant joins\n- `participant_leave`: Triggered when a participant leaves\n\n## Security\n- Each webhook has a unique secret for payload signing\n- Secret is only shown once on creation\n- Payloads are signed using HMAC-SHA256\n\n## Notes\n- Webhooks are user-scoped\n- Delivery is async and failure-tolerant"),
+        (name = "Admin", description = "Administrative endpoints for system management.\n\n## Access\n- All endpoints require admin role\n- Role check is performed in each handler\n\n## Endpoints\n- **GET /admin/users**: List all users with pagination and filters\n- **PATCH /admin/users/:id**: Update user role or status\n- **GET /admin/meetings**: List all meetings with pagination and filters\n- **GET /admin/logs**: List session logs with pagination and filters\n\n## Notes\n- Admins cannot change their own role\n- Most operations are read-only")
     ),
     info(
         title = "CosmicForge RTC API",

@@ -28,8 +28,10 @@ import { cookieStore } from "@/store";
 
 interface LiveRoomProps {
   joinData: JoinMeetingData;
+  initialVideo?: boolean;
+  initialAudio?: boolean;
 }
-export default function LiveRoom({ joinData }: LiveRoomProps) {
+export default function LiveRoom({ joinData, initialVideo = true, initialAudio = true }: LiveRoomProps) {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isDisconnectingRef = useRef(false);
@@ -80,8 +82,8 @@ export default function LiveRoom({ joinData }: LiveRoomProps) {
   return (
     <LayoutContextProvider>
       <LiveKitRoom
-        video={true}
-        audio={true}
+        video={initialVideo}
+        audio={initialAudio}
         token={joinData.join_token}
         serverUrl={joinData.livekit_url}
         data-lk-theme="default"

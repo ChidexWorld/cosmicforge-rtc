@@ -128,6 +128,7 @@ pub async fn register(
     responses(
         (status = 200, description = "Email verified successfully", body = MessageResponse),
         (status = 400, description = "Invalid or expired token"),
+        (status = 404, description = "User not found"),
     )
 )]
 pub async fn verify_email(
@@ -139,12 +140,20 @@ pub async fn verify_email(
         .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
-    // Find user with verification token
+    // Find user by email
     let user = Users::find()
-        .filter(users::Column::VerificationToken.eq(&payload.token))
+        .filter(users::Column::Email.eq(&payload.email))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::BadRequest("Invalid or expired verification token".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
+
+    // Verify token matches
+    let verification_token = user.verification_token.as_ref()
+        .ok_or_else(|| ApiError::BadRequest("No verification request found".to_string()))?;
+
+    if verification_token != &payload.token {
+        return Err(ApiError::BadRequest("Invalid verification token".to_string()));
+    }
 
     // Check if token is expired
     if let Some(expires_at) = user.token_expires_at {

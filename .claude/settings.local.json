@@ -17,7 +17,8 @@
       "Bash(npx eslint:*)",
       "Bash(tree:*)",
       "Bash(npx next build:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

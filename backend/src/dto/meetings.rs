@@ -13,6 +13,50 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
+/// Request to create an instant public meeting
+/// Meeting starts immediately and lasts 1 hour
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct InstantMeetingRequest {
+    /// Optional title (defaults to "Instant Meeting")
+    #[validate(length(
+        max = 200,
+        message = "Title must not exceed 200 characters"
+    ))]
+    pub title: Option<String>,
+}
+
+/// Response for instant meeting creation (includes join info)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InstantMeetingResponse {
+    pub id: Uuid,
+    pub meeting_identifier: String,
+    pub host_id: Uuid,
+    pub title: String,
+    pub is_private: bool,
+    /// Start time in UTC
+    pub start_time: String,
+    /// End time in UTC (1 hour from start)
+    pub end_time: String,
+    pub status: String,
+    pub join_url: String,
+    pub created_at: String,
+    /// Participant ID for the host
+    pub participant_id: Uuid,
+    /// LiveKit join token for immediate connection
+    pub join_token: String,
+    /// LiveKit server URL
+    pub livekit_url: String,
+    /// Room name for LiveKit
+    pub room_name: String,
+}
+
+/// API response wrapper for instant meeting
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InstantMeetingApiResponse {
+    pub success: bool,
+    pub data: InstantMeetingResponse,
+}
+
 /// Request to create a new meeting
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateMeetingRequest {

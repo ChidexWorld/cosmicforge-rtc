@@ -13,6 +13,7 @@ export interface RegisterResponse {
 }
 
 export interface VerifyEmailRequest {
+  email: string;
   token: string;
 }
 

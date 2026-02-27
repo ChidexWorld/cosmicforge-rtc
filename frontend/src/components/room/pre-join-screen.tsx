@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,14 @@ import { useJoinMeeting, usePublicMeeting, useProfile } from "@/hooks";
 import { storageStore, cookieStore } from "@/store";
 import type { JoinMeetingData } from "@/types/meeting";
 
+interface MediaPreferences {
+  isCameraOn: boolean;
+  isMicOn: boolean;
+}
+
 interface PreJoinScreenProps {
   roomId: string;
-  onJoin: (data: JoinMeetingData) => void;
+  onJoin: (data: JoinMeetingData, mediaPrefs: MediaPreferences) => void;
 }
 
 export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
@@ -48,6 +54,9 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
   // Ref for polling interval - used to check admission status
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Tick counter to force re-render for countdown (updated by interval)
+  const [tick, setTick] = useState(0);
+
   const { videoRef, stream, isCameraOn, isMicOn, toggleCamera, toggleMic } =
     useMediaStream({ video: true, audio: true });
 
@@ -57,6 +66,17 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
 
   // Join meeting mutation
   const joinMutation = useJoinMeeting();
+
+  // Compute time until start from meeting data (re-computed on each tick)
+  const timeUntilStart = useMemo(() => {
+    if (meetingInfo?.data?.status !== "scheduled" || !meetingInfo?.data?.start_time) {
+      return null;
+    }
+    const startTime = new Date(meetingInfo.data.start_time).getTime();
+    const remaining = startTime - Date.now();
+    return remaining > 0 ? remaining : 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingInfo?.data?.status, meetingInfo?.data?.start_time, tick]);
 
   // Auto-fill display name from profile data when it loads (only once)
   // This is a legitimate use case: syncing state from async external source
@@ -76,6 +96,24 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
       }
     };
   }, []);
+
+  // Countdown timer interval - only triggers tick updates
+  useEffect(() => {
+    if (meetingInfo?.data?.status !== "scheduled" || !meetingInfo?.data?.start_time) {
+      return;
+    }
+
+    const startTime = new Date(meetingInfo.data.start_time).getTime();
+    if (Date.now() >= startTime) {
+      return; // Meeting already started, no need for countdown
+    }
+
+    const intervalId = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [meetingInfo?.data?.status, meetingInfo?.data?.start_time]);
 
   // Poll to check if participant has been admitted to the meeting
   // This runs when a user is placed in the waiting room (isWaiting = true)
@@ -107,14 +145,14 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
             pollIntervalRef.current = null;
           }
           setIsWaiting(false);
-          // Proceed to the main live room
-          onJoin(result.data);
+          // Proceed to the main live room with media preferences
+          onJoin(result.data, { isCameraOn, isMicOn });
         }
       } catch {
         // Still in waiting room or temporary network error - continue polling
       }
     }, 3000); // Check every 3 seconds
-  }, [roomId, displayName, profileData, joinMutation, onJoin]);
+  }, [roomId, displayName, profileData, joinMutation, onJoin, isCameraOn, isMicOn]);
 
   const handleJoin = async () => {
     setError("");
@@ -163,8 +201,8 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
           );
         }
 
-        // Host or admitted immediately - proceed to room
-        onJoin(result.data);
+        // Host or admitted immediately - proceed to room with media preferences
+        onJoin(result.data, { isCameraOn, isMicOn });
       }
     } catch (err) {
       console.error("Join error:", err);
@@ -343,42 +381,35 @@ export default function PreJoinScreen({ roomId, onJoin }: PreJoinScreenProps) {
           </div>
         ) : (
           <>
-            {/* Logic for Scheduled Meetings:
-                - Check if meeting is 'scheduled' AND current time is before start_time
-                - Be explicit about preventing early joins
-                - Calculate remaining time to show countdown
-            */}
-            {meetingInfo?.data?.status === "scheduled" &&
-              (() => {
-                const now = new Date();
-                const startTime = new Date(meetingInfo.data.start_time);
-                const isBeforeStart = now < startTime;
+            {/* Countdown for scheduled meetings that haven't started */}
+            {timeUntilStart !== null && timeUntilStart > 0 && (() => {
+              const totalSeconds = Math.floor(timeUntilStart / 1000);
+              const hours = Math.floor(totalSeconds / 3600);
+              const minutes = Math.floor((totalSeconds % 3600) / 60);
+              const seconds = totalSeconds % 60;
 
-                if (isBeforeStart) {
-                  const minutesUntilStart = Math.ceil(
-                    (startTime.getTime() - now.getTime()) / (1000 * 60),
-                  );
-                  const hours = Math.floor(minutesUntilStart / 60);
-                  const minutes = minutesUntilStart % 60;
-                  const timeDisplay =
-                    hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+              let timeDisplay: string;
+              if (hours > 0) {
+                timeDisplay = `${hours}h ${minutes}m ${seconds}s`;
+              } else if (minutes > 0) {
+                timeDisplay = `${minutes}m ${seconds}s`;
+              } else {
+                timeDisplay = `${seconds}s`;
+              }
 
-                  return (
-                    <div className="flex flex-col items-center gap-2 w-full max-w-xs">
-                      <p className="text-sm text-center text-[#00000080]">
-                        Meeting starts in {timeDisplay}
-                      </p>
-                      <Button size="lg" className="w-full" disabled>
-                        Meeting Not Started
-                      </Button>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+              return (
+                <div className="flex flex-col items-center gap-2 w-full max-w-xs">
+                  <p className="text-sm text-center text-[#00000080]">
+                    Meeting starts in <span className="font-semibold text-[#029CD4]">{timeDisplay}</span>
+                  </p>
+                  <Button size="lg" className="w-full" disabled>
+                    Meeting Not Started
+                  </Button>
+                </div>
+              );
+            })()}
 
-            {(meetingInfo?.data?.status !== "scheduled" ||
-              new Date() >= new Date(meetingInfo?.data?.start_time || "")) && (
+            {(timeUntilStart === null || timeUntilStart <= 0) && (
               <Button
                 size="lg"
                 className="w-full max-w-xs"

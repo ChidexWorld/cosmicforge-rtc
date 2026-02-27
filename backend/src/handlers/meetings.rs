@@ -31,6 +31,152 @@ use crate::{
     utils::{format_duration, format_role, format_status, format_utc, format_utc_opt, generate_meeting_identifier, local_to_utc, now_utc},
 };
 
+/// Create an instant public meeting
+///
+/// Creates a meeting that starts immediately and lasts 1 hour.
+/// The authenticated user becomes the host and is automatically joined.
+/// Returns join token for immediate connection.
+#[utoipa::path(
+    post,
+    path = "/api/v1/meetings/instant",
+    tag = "Meetings",
+    request_body = InstantMeetingRequest,
+    responses(
+        (status = 201, description = "Instant meeting created and joined", body = InstantMeetingApiResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn create_instant_meeting(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Json(payload): Json<crate::dto::InstantMeetingRequest>,
+) -> ApiResult<(StatusCode, Json<crate::dto::InstantMeetingApiResponse>)> {
+    payload
+        .validate()
+        .map_err(|e| ApiError::ValidationError(e.to_string()))?;
+
+    let user_id = Uuid::parse_str(&claims.sub)
+        .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
+
+    let now = now_utc();
+    let end_time = now + chrono::Duration::hours(1);
+
+    // Generate meeting identifier
+    let meeting_identifier = generate_meeting_identifier();
+    let meeting_id = Uuid::new_v4();
+    let title = payload.title.unwrap_or_else(|| "Instant Meeting".to_string());
+
+    // Create meeting with status = ongoing (starts immediately)
+    let meeting = meetings::ActiveModel {
+        id: Set(meeting_id),
+        meeting_identifier: Set(meeting_identifier.clone()),
+        user_id: Set(Some(user_id)),
+        host_id: Set(user_id),
+        title: Set(title.clone()),
+        metadata: Set(None),
+        is_private: Set(false), // Always public
+        start_time: Set(now),
+        end_time: Set(Some(end_time)),
+        status: Set(MeetingStatus::Ongoing), // Start immediately
+        created_at: Set(now),
+        updated_at: Set(now),
+    };
+
+    let meeting = meeting.insert(&state.db).await?;
+
+    // Get user's display name
+    use crate::models::users::Entity as Users;
+    let user = Users::find_by_id(user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::Unauthorized("User not found".to_string()))?;
+
+    // Create host participant record
+    let participant_id = Uuid::new_v4();
+    let participant = participants::ActiveModel {
+        id: Set(participant_id),
+        meeting_id: Set(meeting_id),
+        user_id: Set(Some(user_id)),
+        role: Set(ParticipantRole::Host),
+        join_time: Set(now),
+        leave_time: Set(None),
+        status: Set(ParticipantStatus::Joined),
+        is_muted: Set(false),
+        is_video_on: Set(true),
+        is_screen_sharing: Set(false),
+        display_name: Set(user.username.clone()),
+    };
+
+    participant.insert(&state.db).await?;
+
+    // Log the meeting start event
+    let session_log = session_logs::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meeting_id: Set(meeting_id),
+        participant_id: Set(Some(participant_id)),
+        event_type: Set(EventType::MeetingStart),
+        event_time: Set(now),
+        metadata: Set(Some(serde_json::json!({
+            "started_by": user_id.to_string(),
+            "display_name": user.username,
+            "instant_meeting": true
+        }))),
+    };
+    session_log.insert(&state.db).await?;
+
+    // Log the host join event
+    let join_log = session_logs::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meeting_id: Set(meeting_id),
+        participant_id: Set(Some(participant_id)),
+        event_type: Set(EventType::ParticipantJoin),
+        event_time: Set(now),
+        metadata: Set(Some(serde_json::json!({
+            "display_name": user.username,
+            "role": "host",
+            "is_guest": false
+        }))),
+    };
+    join_log.insert(&state.db).await?;
+
+    // Generate LiveKit join token
+    let join_token = state.livekit_service.generate_join_token(
+        &meeting_identifier,
+        &participant_id.to_string(),
+        &user.username,
+        true, // is_host
+    )?;
+
+    let response = crate::dto::InstantMeetingResponse {
+        id: meeting.id,
+        meeting_identifier: meeting.meeting_identifier.clone(),
+        host_id: meeting.host_id,
+        title: meeting.title,
+        is_private: meeting.is_private,
+        start_time: format_utc(meeting.start_time),
+        end_time: format_utc(end_time),
+        status: "ongoing".to_string(),
+        join_url: state.join_url(&meeting.meeting_identifier),
+        created_at: format_utc(meeting.created_at),
+        participant_id,
+        join_token,
+        livekit_url: state.livekit_service.get_url().to_string(),
+        room_name: meeting.meeting_identifier,
+    };
+
+    Ok((
+        StatusCode::CREATED,
+        Json(crate::dto::InstantMeetingApiResponse {
+            success: true,
+            data: response,
+        }),
+    ))
+}
+
 /// List meetings for the authenticated user
 #[utoipa::path(
     get,

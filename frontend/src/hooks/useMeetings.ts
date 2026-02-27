@@ -11,6 +11,6 @@ export function useMeetings(params?: MeetingsParams) {
     gcTime: 1000 * 60 * 10, // keep cache for 10 mins
     refetchOnWindowFocus: false, // User switched tabs? Don’t refetch.
     refetchOnReconnect: false, //User switched tabs? Don’t refetch.
-    refetchOnMount: false, // Component remounted? Don’t refetch
+    // refetchOnMount: false, // Component remounted? Don’t refetch
   });
 }

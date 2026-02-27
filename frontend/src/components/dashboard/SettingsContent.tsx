@@ -10,7 +10,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 import { storageStore } from "@/store";
 import ApiKeysContent from "./ApiKeysContent";
-import { User, Key } from "lucide-react";
+import WebhooksContent from "./WebhooksContent";
+import { User, Key, Webhook } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 
 export default function SettingsContent() {
-  const [activeTab, setActiveTab] = useState<"profile" | "api-keys">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "api-keys" | "webhooks">("profile");
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
@@ -34,11 +35,11 @@ export default function SettingsContent() {
         </p>
       </div>
 
-      <div className="flex border-b border-gray-100">
+      <div className="flex border-b border-gray-100 overflow-x-auto">
         <button
           onClick={() => setActiveTab("profile")}
           className={cn(
-            "flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors",
+            "flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
             activeTab === "profile"
               ? "border-[#029CD4] text-[#029CD4]"
               : "border-transparent text-gray-400 hover:text-gray-600",
@@ -50,7 +51,7 @@ export default function SettingsContent() {
         <button
           onClick={() => setActiveTab("api-keys")}
           className={cn(
-            "flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors",
+            "flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
             activeTab === "api-keys"
               ? "border-[#029CD4] text-[#029CD4]"
               : "border-transparent text-gray-400 hover:text-gray-600",
@@ -59,9 +60,23 @@ export default function SettingsContent() {
           <Key className="w-4 h-4" />
           API Keys
         </button>
+        <button
+          onClick={() => setActiveTab("webhooks")}
+          className={cn(
+            "flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+            activeTab === "webhooks"
+              ? "border-[#029CD4] text-[#029CD4]"
+              : "border-transparent text-gray-400 hover:text-gray-600",
+          )}
+        >
+          <Webhook className="w-4 h-4" />
+          Webhooks
+        </button>
       </div>
 
-      {activeTab === "profile" ? <ProfileSettings /> : <ApiKeysContent />}
+      {activeTab === "profile" && <ProfileSettings />}
+      {activeTab === "api-keys" && <ApiKeysContent />}
+      {activeTab === "webhooks" && <WebhooksContent />}
     </div>
   );
 }

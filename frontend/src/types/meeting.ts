@@ -35,6 +35,32 @@ export interface CreateMeetingResponse {
   data: Meeting;
 }
 
+export interface InstantMeetingRequest {
+  title?: string;
+}
+
+export interface InstantMeetingData {
+  id: string;
+  meeting_identifier: string;
+  host_id: string;
+  title: string;
+  is_private: boolean;
+  start_time: string;
+  end_time: string;
+  status: string;
+  join_url: string;
+  created_at: string;
+  participant_id: string;
+  join_token: string;
+  livekit_url: string;
+  room_name: string;
+}
+
+export interface InstantMeetingResponse {
+  success: boolean;
+  data: InstantMeetingData;
+}
+
 export interface MeetingResponse {
   success: boolean;
   data: Meeting;

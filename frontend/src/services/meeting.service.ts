@@ -12,6 +12,8 @@ import type {
   ParticipantActionResponse,
   ParticipantsListResponse,
   ChatMessage,
+  InstantMeetingRequest,
+  InstantMeetingResponse,
 } from "@/types/meeting";
 
 export const meetingService = {
@@ -38,6 +40,15 @@ export const meetingService = {
   // POST /meetings — create a meeting
   createMeeting: async (data: CreateMeetingRequest) => {
     const response = await api.post<CreateMeetingResponse>("/meetings", data);
+    return response.data;
+  },
+
+  // POST /meetings/instant — create an instant public meeting (1 hour)
+  createInstantMeeting: async (data?: InstantMeetingRequest) => {
+    const response = await api.post<InstantMeetingResponse>(
+      "/meetings/instant",
+      data ?? {},
+    );
     return response.data;
   },
 

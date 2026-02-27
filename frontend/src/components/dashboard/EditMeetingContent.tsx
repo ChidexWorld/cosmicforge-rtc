@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useCreateMeeting } from "@/hooks";
+import { useRouter } from "next/navigation";
+import { useMeeting, useUpdateMeeting } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +12,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Spinner } from "@/components/ui/spinner";
 import type { ApiErrorResponse } from "@/types/auth";
+import type { Meeting } from "@/types/meeting";
 import type { AxiosError } from "axios";
-import { Calendar, Clock, Lock, Globe } from "lucide-react";
-import { getUserTimezone } from "@/utils/timezone";
-import MeetingSuccessView from "./MeetingSuccessView";
+import { Calendar, Clock, Lock, Globe, ArrowLeft } from "lucide-react";
+import { getUserTimezone, toLocalDateValue, toLocalTimeValue } from "@/utils/timezone";
 
 const DURATION_OPTIONS = [
   { value: "15", label: "15 minutes" },
@@ -27,30 +29,36 @@ const DURATION_OPTIONS = [
   { value: "180", label: "3 hours" },
 ];
 
-function getCurrentDate() {
-  const now = new Date();
-  return now.toISOString().split("T")[0];
+function calculateDuration(startTime: string, endTime: string): string {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  const diffMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+
+  // Find the closest duration option
+  const option = DURATION_OPTIONS.find((opt) => parseInt(opt.value) === diffMinutes);
+  if (option) return option.value;
+
+  // Default to 30 minutes if no match
+  return "30";
 }
 
-function getCurrentTime() {
-  const now = new Date();
-  return now.toTimeString().slice(0, 5);
+interface EditMeetingFormProps {
+  meeting: Meeting;
+  meetingId: string;
 }
 
-export default function ScheduleContent() {
-  const createMeeting = useCreateMeeting();
+function EditMeetingForm({ meeting, meetingId }: EditMeetingFormProps) {
+  const router = useRouter();
+  const updateMeeting = useUpdateMeeting();
 
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState(getCurrentDate);
-  const [startTime, setStartTime] = useState(getCurrentTime);
-  const [duration, setDuration] = useState("30");
-  const [isPrivate, setIsPrivate] = useState(false);
-  const [metadata, setMetadata] = useState("");
+  // Initialize state directly from props - no useEffect needed
+  const [title, setTitle] = useState(meeting.title || "");
+  const [date, setDate] = useState(toLocalDateValue(meeting.start_time));
+  const [startTime, setStartTime] = useState(toLocalTimeValue(meeting.start_time));
+  const [duration, setDuration] = useState(calculateDuration(meeting.start_time, meeting.end_time));
+  const [isPrivate, setIsPrivate] = useState(meeting.is_private);
+  const [metadata, setMetadata] = useState(meeting.metadata || "");
   const [error, setError] = useState("");
-  const [created, setCreated] = useState<{
-    meeting_identifier: string;
-    join_url: string;
-  } | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,65 +85,49 @@ export default function ScheduleContent() {
     const endMinutes = String(endDate.getMinutes()).padStart(2, "0");
     const end_time = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}:00`;
 
-    createMeeting.mutate(
+    updateMeeting.mutate(
       {
-        title: title.trim(),
-        start_time,
-        end_time,
-        timezone: getUserTimezone(),
-        is_private: isPrivate,
-        metadata: metadata.trim() || undefined,
+        id: meetingId,
+        data: {
+          title: title.trim(),
+          start_time,
+          end_time,
+          timezone: getUserTimezone(),
+          is_private: isPrivate,
+          metadata: metadata.trim() || undefined,
+        },
       },
       {
-        onSuccess: (response) => {
-          setCreated({
-            meeting_identifier: response.data.meeting_identifier,
-            join_url: response.data.join_url,
-          });
+        onSuccess: () => {
+          router.push("/dashboard/meetings");
         },
         onError: (err: AxiosError<ApiErrorResponse>) => {
           const message =
-            err.response?.data?.error?.message || "Failed to schedule meeting";
+            err.response?.data?.error?.message || "Failed to update meeting";
           setError(message);
         },
       },
     );
   };
 
-  // Success state
-  if (created) {
-    const resetForm = () => {
-      setCreated(null);
-      setTitle("");
-      setDate(getCurrentDate());
-      setStartTime(getCurrentTime());
-      setDuration("30");
-      setMetadata("");
-      setIsPrivate(false);
-    };
-
-    return (
-      <MeetingSuccessView
-        meetingIdentifier={created.meeting_identifier}
-        joinUrl={created.join_url}
-        title="Meeting Scheduled"
-        description="Your meeting has been created successfully."
-        showScheduleAnother={true}
-        onScheduleAnother={resetForm}
-        onBack={resetForm}
-      />
-    );
-  }
-
   return (
     <div className="px-4 py-6 sm:px-6 sm:py-8 md:p-10 font-inter">
+      {/* Back Button */}
+      <button
+        onClick={() => router.push("/dashboard/meetings")}
+        className="flex items-center gap-2 text-[#343434] hover:text-[#029CD4] transition-colors mb-4"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        <span className="text-sm font-medium">Back to Meetings</span>
+      </button>
+
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h2 className="text-xl sm:text-2xl font-bold text-[#343434]">
-          Schedule a Meeting
+          Edit Meeting
         </h2>
         <p className="text-sm text-[#00000080] mt-1">
-          Set up a new meeting and share the link with participants
+          Update your meeting details
         </p>
       </div>
 
@@ -287,16 +279,62 @@ export default function ScheduleContent() {
         {/* Error */}
         {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
 
-        {/* Submit */}
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          loading={createMeeting.isPending}
-        >
-          Schedule Meeting
-        </Button>
+        {/* Actions */}
+        <div className="flex gap-3">
+          <Button
+            type="submit"
+            size="lg"
+            className="flex-1"
+            loading={updateMeeting.isPending}
+          >
+            Save Changes
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => router.push("/dashboard/meetings")}
+          >
+            Cancel
+          </Button>
+        </div>
       </form>
     </div>
   );
+}
+
+export default function EditMeetingContent({ meetingId }: { meetingId: string }) {
+  const router = useRouter();
+  const { data: meetingData, isLoading: isFetching, isError } = useMeeting(meetingId);
+
+  if (isFetching) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (isError || !meetingData?.data) {
+    return (
+      <div className="px-4 py-6 sm:px-6 sm:py-8 md:p-10 font-inter">
+        <div className="text-center py-20">
+          <p className="text-red-500 font-medium">Failed to load meeting</p>
+          <p className="text-sm text-[#00000080] mt-1">
+            The meeting may not exist or you don&apos;t have access to it.
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => router.push("/dashboard/meetings")}
+          >
+            Back to Meetings
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render form only when data is available - state initializes from props
+  return <EditMeetingForm meeting={meetingData.data} meetingId={meetingId} />;
 }

@@ -21,3 +21,4 @@ export * from "./useWaitingRoom";
 export * from "./useParticipants";
 export * from "./useMediaControl";
 export * from "./useChat";
+export * from "./useWebhooks";

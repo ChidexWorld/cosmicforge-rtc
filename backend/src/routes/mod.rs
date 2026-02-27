@@ -1,9 +1,11 @@
+pub mod admin;
 pub mod api;
 pub mod api_keys;
 pub mod auth;
 pub mod meetings;
 pub mod participants;
 pub mod users;
+pub mod webhooks;
 
 use crate::{handlers, state::AppState};
 use axum::{routing::get, Router};
@@ -24,5 +26,10 @@ pub fn create_routes(state: AppState) -> Router {
         )
         .nest("/api/v1/api", api::api_routes(state.clone()))
         .nest("/api/v1/users", users::users_routes(state.clone()))
+        .nest(
+            "/api/v1/webhooks",
+            webhooks::webhook_routes(state.clone()),
+        )
+        .nest("/api/v1/admin", admin::admin_routes(state.clone()))
         .with_state(state)
 }

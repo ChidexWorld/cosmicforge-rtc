@@ -92,6 +92,9 @@ pub struct UserInfo {
 
 #[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct VerifyEmailRequest {
+    #[validate(email(message = "Invalid email address"))]
+    pub email: String,
+
     #[validate(regex(path = *VERIFICATION_CODE_REGEX, message = "Verification code must be 6 digits"))]
     pub token: String,
 }

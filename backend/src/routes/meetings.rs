@@ -15,6 +15,7 @@ use axum::{
 pub fn meeting_routes(state: AppState) -> Router<AppState> {
     Router::new()
         // Protected routes (require authentication)
+        .route("/instant", post(meetings::create_instant_meeting))
         .route(
             "/",
             get(meetings::list_meetings).post(meetings::create_meeting),

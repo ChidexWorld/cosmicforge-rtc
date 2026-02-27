@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useMeetings, useUpdateMeeting, useDeleteMeeting } from "@/hooks";
+import { useRouter } from "next/navigation";
+import { useMeetings, useDeleteMeeting } from "@/hooks";
 import type { Meeting, MeetingStatus } from "@/types/meeting";
 import type { ApiErrorResponse } from "@/types/auth";
 import type { AxiosError } from "axios";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Calendar,
   Clock,
@@ -19,15 +18,13 @@ import {
   ChevronRight,
   Pencil,
   Trash2,
-  X,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  getUserTimezone,
   formatShortDateForDisplay,
   formatTimeForDisplay,
-  toLocalDateValue,
-  toLocalTimeValue,
 } from "@/utils/timezone";
 
 const STATUS_FILTERS: { label: string; value: MeetingStatus | "all" }[] = [
@@ -55,11 +52,11 @@ function getDuration(start: string, end: string) {
 }
 
 export default function MeetingsContent() {
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<MeetingStatus | "all">(
     "all",
   );
   const [page, setPage] = useState(1);
-  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useMeetings({
@@ -140,7 +137,7 @@ export default function MeetingsContent() {
               <MeetingCard
                 key={meeting.id}
                 meeting={meeting}
-                onEdit={() => setEditingMeeting(meeting)}
+                onEdit={() => router.push(`/dashboard/meetings/${meeting.id}/edit`)}
                 onDelete={() => setDeletingId(meeting.id)}
               />
             ))}
@@ -173,14 +170,6 @@ export default function MeetingsContent() {
         </>
       )}
 
-      {/* Edit Modal */}
-      {editingMeeting && (
-        <EditMeetingModal
-          meeting={editingMeeting}
-          onClose={() => setEditingMeeting(null)}
-        />
-      )}
-
       {/* Delete Confirm Modal */}
       {deletingId && (
         <DeleteMeetingModal
@@ -203,7 +192,14 @@ function MeetingCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [copied, setCopied] = useState(false);
   const isScheduled = meeting.status === "scheduled";
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(meeting.join_url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl p-4 sm:p-5 shadow-sm hover:shadow-md transition-shadow">
@@ -249,6 +245,17 @@ function MeetingCard({
             <span className="font-mono bg-gray-50 px-2 py-0.5 rounded">
               {meeting.meeting_identifier}
             </span>
+            <button
+              onClick={handleCopy}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              title="Copy meeting link"
+            >
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-green-500" />
+              ) : (
+                <Copy className="w-3.5 h-3.5 text-[#00000060] hover:text-[#029CD4]" />
+              )}
+            </button>
           </div>
         </div>
 
@@ -294,224 +301,6 @@ function MeetingCard({
             </Button>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Edit Modal ──────────────────────────────────────────────────────────────
-
-function EditMeetingModal({
-  meeting,
-  onClose,
-}: {
-  meeting: Meeting;
-  onClose: () => void;
-}) {
-  const updateMeeting = useUpdateMeeting();
-
-  const [title, setTitle] = useState(meeting.title);
-  const [date, setDate] = useState(toLocalDateValue(meeting.start_time));
-  const [startTime, setStartTime] = useState(
-    toLocalTimeValue(meeting.start_time),
-  );
-  const [endTime, setEndTime] = useState(toLocalTimeValue(meeting.end_time));
-  const [isPrivate, setIsPrivate] = useState(meeting.is_private);
-  const [metadata, setMetadata] = useState(meeting.metadata || "");
-  const [error, setError] = useState("");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-
-    if (!title.trim()) {
-      setError("Title is required");
-      return;
-    }
-    if (!date || !startTime || !endTime) {
-      setError("Date and time are required");
-      return;
-    }
-
-    const start_time = `${date}T${startTime}:00`;
-    const end_time = `${date}T${endTime}:00`;
-
-    if (new Date(end_time) <= new Date(start_time)) {
-      setError("End time must be after start time");
-      return;
-    }
-
-    updateMeeting.mutate(
-      {
-        id: meeting.id,
-        data: {
-          title: title.trim(),
-          start_time,
-          end_time,
-          timezone: getUserTimezone(),
-          is_private: isPrivate,
-          metadata: metadata.trim() || undefined,
-        },
-      },
-      {
-        onSuccess: () => onClose(),
-        onError: (err: AxiosError<ApiErrorResponse>) => {
-          setError(
-            err.response?.data?.error?.message || "Failed to update meeting",
-          );
-        },
-      },
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-[#343434]">Edit Meeting</h3>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Title */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="edit-title"
-              className="text-sm font-medium text-[#343434]"
-            >
-              Meeting Title
-            </Label>
-            <Input
-              id="edit-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-
-          {/* Date */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="edit-date"
-              className="text-sm font-medium text-[#343434]"
-            >
-              <Calendar className="w-3.5 h-3.5 inline mr-1.5" />
-              Date
-            </Label>
-            <Input
-              id="edit-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-
-          {/* Time */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="edit-start"
-                className="text-sm font-medium text-[#343434]"
-              >
-                <Clock className="w-3.5 h-3.5 inline mr-1.5" />
-                Start Time
-              </Label>
-              <Input
-                id="edit-start"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="edit-end"
-                className="text-sm font-medium text-[#343434]"
-              >
-                <Clock className="w-3.5 h-3.5 inline mr-1.5" />
-                End Time
-              </Label>
-              <Input
-                id="edit-end"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Privacy */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-[#343434]">
-              Meeting Type
-            </Label>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setIsPrivate(true)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isPrivate
-                    ? "bg-[#029CD4] text-white shadow-sm"
-                    : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
-                }`}
-              >
-                <Lock className="w-4 h-4" />
-                Private
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsPrivate(false)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  !isPrivate
-                    ? "bg-[#029CD4] text-white shadow-sm"
-                    : "bg-[#FAFAFB] text-[#00000080] hover:bg-gray-200"
-                }`}
-              >
-                <Globe className="w-4 h-4" />
-                Public
-              </button>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="edit-metadata"
-              className="text-sm font-medium text-[#343434]"
-            >
-              Description{" "}
-              <span className="text-[#00000040] font-normal">(optional)</span>
-            </Label>
-            <textarea
-              id="edit-metadata"
-              value={metadata}
-              onChange={(e) => setMetadata(e.target.value)}
-              rows={3}
-              className="flex w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-            />
-          </div>
-
-          {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
-
-          <div className="flex gap-3 pt-2">
-            <Button
-              type="submit"
-              className="flex-1"
-              loading={updateMeeting.isPending}
-            >
-              Save Changes
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-          </div>
-        </form>
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import AuthHeader from "./AuthHeader";
 import { useVerifyEmail } from "@/hooks";
 import type { ApiErrorResponse } from "@/types/auth";
 import { AxiosError } from "axios";
+import { cookieStore, storageStore } from "@/store";
 
 function maskEmail(email: string) {
   const [local, domain] = email.split("@");
@@ -64,10 +65,18 @@ const VerifyModal = ({
     }
 
     // Otherwise use default email verification
+    if (!email) {
+      setError("Email is missing. Please go back and try again.");
+      return;
+    }
+
     verifyEmail.mutate(
-      { token: otp },
+      { email, token: otp },
       {
         onSuccess: () => {
+          // Clear any stored tokens so user can login fresh after verification
+          cookieStore.clearTokens();
+          storageStore.clearUser();
           router.push("/login");
         },
         onError: (err) => {
@@ -111,20 +120,6 @@ const VerifyModal = ({
           <p className="text-sm font-bold text-gray-900">{displayEmail}</p>
         </div>
 
-        {/* Error */}
-        {(error || customError) && (
-          <div className="w-full bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-2 mb-3">
-            {customError || error}
-          </div>
-        )}
-
-        {/* Success message */}
-        {resendMessage && (
-          <div className="w-full bg-green-50 border border-green-200 text-green-600 text-sm rounded-lg px-4 py-2 mb-3">
-            {resendMessage}
-          </div>
-        )}
-
         {/* OTP Input Group */}
         <form
           className="w-full flex flex-col items-start space-y-2"
@@ -149,6 +144,20 @@ const VerifyModal = ({
               ))}
             </InputOTPGroup>
           </InputOTP>
+
+          {/* Error - below OTP input */}
+          {(error || customError) && (
+            <div className="w-full bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-2">
+              {customError || error}
+            </div>
+          )}
+
+          {/* Success message */}
+          {resendMessage && (
+            <div className="w-full bg-green-50 border border-green-200 text-green-600 text-sm rounded-lg px-4 py-2">
+              {resendMessage}
+            </div>
+          )}
 
           <div>
             <p className="text-sm text-gray-500">
