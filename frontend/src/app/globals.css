@@ -126,3 +126,41 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* LiveKit Grid Layout Overrides */
+.lk-grid-layout {
+  display: flex !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+}
+
+.lk-participant-tile {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Prevent horizontal overflow */
+[data-lk-theme] {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+
+/* Notification animation */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}

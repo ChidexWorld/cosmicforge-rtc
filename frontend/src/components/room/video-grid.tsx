@@ -44,20 +44,14 @@ const PARTICIPANTS = [
 
 export default function VideoGrid() {
   return (
-    <div className="h-full w-full p-8 md:p-12 bg-gray-50/30 overflow-y-auto">
-      <div className="flex flex-wrap gap-4 justify-center content-start">
+    <div className="h-full w-full max-w-full p-2 sm:p-4 bg-gray-50/30 overflow-y-auto overflow-x-hidden box-border">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-3 w-full max-w-full">
         {[...PARTICIPANTS]
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((user) => (
             <div
               key={user.id}
-              style={{
-                width: "277px",
-                height: "186px",
-                borderRadius: "8px",
-                borderWidth: "1px",
-              }}
-              className={`relative overflow-hidden shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02] border-[#272EA766] ${getRandomColor(user.id)}`}
+              className={`relative overflow-hidden shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02] border border-[#272EA766] rounded-lg w-full h-[calc((100vh-180px)/5)] md:h-[calc((100vh-180px)/2)] ${getRandomColor(user.id)}`}
             >
               {/* Participant Placeholder / Video Stream */}
               <div className="relative w-full h-full flex items-center justify-center">

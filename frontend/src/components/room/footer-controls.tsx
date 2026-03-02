@@ -6,7 +6,6 @@ import {
   MicOff,
   Video,
   VideoOff,
-  Settings,
   Maximize,
   Phone,
   ChevronUp,
@@ -239,9 +238,6 @@ export default function FooterControls({
             )}
           </Button>
 
-          <Button className="p-2 sm:p-3 rounded-lg bg-[#FAFAFB] text-sky-500 hover:bg-gray-200">
-            <Settings className="text-[#029CD4]" size={24} />
-          </Button>
         </div>
         <Button
           onClick={onToggleSidebar}
