@@ -8,6 +8,7 @@ use crate::{
     error::{ApiError, ApiResult},
     models::users::{self, Entity as Users},
     services::auth::{generate_verification_code, hash_password, verify_password},
+    services::otp::OtpType,
     state::AppState,
     utils::now_utc,
 };
@@ -61,10 +62,9 @@ pub async fn register(
     let password_hash = hash_password(&payload.password)?;
 
     // Generate verification token
-    let verification_token = generate_verification_code();
-    let token_expires_at = now_utc() + chrono::Duration::hours(24);
+    let verification_code = generate_verification_code();
 
-    // Create user
+    // Create user (OTP codes are stored in Redis, not in DB)
     let user = users::ActiveModel {
         id: Set(Uuid::new_v4()),
         username: Set(payload.username),
@@ -73,21 +73,23 @@ pub async fn register(
         auth_type: Set(users::AuthType::Local),
         role: Set(users::UserRole::User),
         status: Set(users::UserStatus::PendingVerification),
-        verification_token: Set(Some(verification_token.clone())),
-        token_expires_at: Set(Some(token_expires_at)),
         created_at: Set(now_utc()),
         updated_at: Set(now_utc()),
         last_login: Set(None),
-        reset_token: Set(None),
-        reset_token_expires_at: Set(None),
     };
 
     let user = user.insert(&state.db).await?;
 
+    // Store verification code in Redis with TTL
+    state
+        .otp_service
+        .store_code(&user.email, &verification_code, OtpType::Verification)
+        .await?;
+
     // Queue verification email
     match state
         .email_service
-        .send_verification_email(&user.email, &user.username, &verification_token)
+        .send_verification_email(&user.email, &user.username, &verification_code)
         .await
     {
         Ok(job_id) => {
@@ -147,28 +149,24 @@ pub async fn verify_email(
         .await?
         .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
-    // Verify token matches
-    let verification_token = user.verification_token.as_ref()
-        .ok_or_else(|| ApiError::BadRequest("No verification request found".to_string()))?;
-
-    if verification_token != &payload.token {
-        return Err(ApiError::BadRequest("Invalid verification token".to_string()));
+    // Check if already verified
+    if user.status == users::UserStatus::Active {
+        return Err(ApiError::BadRequest("Email is already verified".to_string()));
     }
 
-    // Check if token is expired
-    if let Some(expires_at) = user.token_expires_at {
-        if expires_at < now_utc() {
-            return Err(ApiError::BadRequest(
-                "Verification token has expired".to_string(),
-            ));
-        }
+    // Verify token from Redis (includes rate limiting and auto-deletion on success)
+    let is_valid = state
+        .otp_service
+        .verify_code(&payload.email, &payload.token, OtpType::Verification)
+        .await?;
+
+    if !is_valid {
+        return Err(ApiError::BadRequest("Invalid verification code".to_string()));
     }
 
     // Update user status
     let mut user: users::ActiveModel = user.into();
     user.status = Set(users::UserStatus::Active);
-    user.verification_token = Set(None);
-    user.token_expires_at = Set(None);
     user.updated_at = Set(now_utc());
 
     user.update(&state.db).await?;
@@ -188,6 +186,7 @@ pub async fn verify_email(
         (status = 200, description = "Login successful", body = LoginResponse),
         (status = 401, description = "Invalid credentials"),
         (status = 403, description = "Email verification required or account inactive"),
+        (status = 429, description = "Too many login attempts"),
     )
 )]
 pub async fn login(
@@ -199,12 +198,20 @@ pub async fn login(
         .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
+    // Check rate limit before processing login
+    state.rate_limiter.check_login_rate(&payload.email).await?;
+
     // Find user by email
-    let user = Users::find()
+    let user = match Users::find()
         .filter(users::Column::Email.eq(&payload.email))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::Unauthorized("Invalid email or password".to_string()))?;
+    {
+        Some(user) => user,
+        None => {
+            return Err(ApiError::Unauthorized("Invalid email or password".to_string()));
+        }
+    };
 
     // Verify password
     let password_hash = user
@@ -224,6 +231,9 @@ pub async fn login(
     if user.status == users::UserStatus::Inactive {
         return Err(ApiError::Forbidden("Account has been deactivated".to_string()));
     }
+
+    // Clear rate limit on successful login
+    state.rate_limiter.clear_login_rate(&payload.email).await?;
 
     // Generate tokens
     let role_str = format!("{:?}", user.role).to_lowercase();
@@ -298,15 +308,50 @@ pub async fn refresh_token(
     post,
     path = "/api/v1/auth/logout",
     tag = "Authentication",
+    security(
+        ("bearer_auth" = [])
+    ),
     responses(
         (status = 200, description = "Logout successful", body = MessageResponse),
+        (status = 401, description = "Unauthorized"),
     )
 )]
-pub async fn logout() -> ApiResult<Json<MessageResponse>> {
-    // In a real implementation, you would:
-    // 1. Add token to blacklist
-    // 2. Remove from Redis/cache
-    // For now, just return success
+pub async fn logout(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> ApiResult<Json<MessageResponse>> {
+    // Extract token from Authorization header
+    let auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| ApiError::Unauthorized("Missing authorization header".to_string()))?;
+
+    let token = auth_header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
+
+    // Verify token to get claims (to calculate remaining TTL)
+    let claims = state
+        .jwt_service
+        .verify_token(token)
+        .map_err(|_| ApiError::Unauthorized("Invalid or expired token".to_string()))?;
+
+    // Calculate remaining TTL from token expiry
+    let now = chrono::Utc::now().timestamp();
+    let ttl_secs = if claims.exp > now {
+        (claims.exp - now) as u64
+    } else {
+        0 // Already expired, but blacklist briefly anyway
+    };
+
+    // Only blacklist if there's remaining TTL
+    if ttl_secs > 0 {
+        state
+            .token_blacklist
+            .blacklist_token(token, ttl_secs)
+            .await?;
+    }
+
     Ok(Json(MessageResponse {
         message: "Logged out successfully".to_string(),
     }))
@@ -322,6 +367,7 @@ pub async fn logout() -> ApiResult<Json<MessageResponse>> {
         (status = 200, description = "Verification email sent", body = MessageResponse),
         (status = 400, description = "Validation error"),
         (status = 404, description = "User not found"),
+        (status = 429, description = "Too many requests"),
     )
 )]
 pub async fn resend_verification_email(
@@ -342,19 +388,25 @@ pub async fn resend_verification_email(
         return Err(ApiError::BadRequest("User is already verified".to_string()));
     }
 
-    // Generate new token
-    let verification_token = generate_verification_code();
-    let token_expires_at = now_utc() + chrono::Duration::hours(24);
+    // Check rate limit before sending
+    state
+        .otp_service
+        .check_send_rate(&payload.email, OtpType::Verification)
+        .await?;
 
-    let mut active_user: users::ActiveModel = user.clone().into();
-    active_user.verification_token = Set(Some(verification_token.clone()));
-    active_user.token_expires_at = Set(Some(token_expires_at));
-    active_user.update(&state.db).await?;
+    // Generate new verification code
+    let verification_code = generate_verification_code();
+
+    // Store in Redis with TTL
+    state
+        .otp_service
+        .store_code(&payload.email, &verification_code, OtpType::Verification)
+        .await?;
 
     // Send email
     if let Err(e) = state
         .email_service
-        .send_verification_email(&payload.email, &user.username, &verification_token)
+        .send_verification_email(&payload.email, &user.username, &verification_code)
         .await
     {
         tracing::error!("Failed to resend verification email: {}", e);
@@ -375,6 +427,7 @@ pub async fn resend_verification_email(
         (status = 200, description = "Password reset code sent", body = MessageResponse),
         (status = 400, description = "Validation error"),
         (status = 404, description = "User not found"),
+        (status = 429, description = "Too many requests"),
     )
 )]
 pub async fn forgot_password(
@@ -402,15 +455,20 @@ pub async fn forgot_password(
         ));
     }
 
+    // Check rate limit before sending
+    state
+        .otp_service
+        .check_send_rate(&payload.email, OtpType::PasswordReset)
+        .await?;
+
     // Generate 6-digit reset code
     let reset_code = generate_verification_code();
-    let expires_at = now_utc() + chrono::Duration::hours(1);
 
-    let mut active_user: users::ActiveModel = user.clone().into();
-    active_user.reset_token = Set(Some(reset_code.clone()));
-    active_user.reset_token_expires_at = Set(Some(expires_at));
-    active_user.updated_at = Set(now_utc());
-    active_user.update(&state.db).await?;
+    // Store in Redis with TTL (1 hour)
+    state
+        .otp_service
+        .store_code(&payload.email, &reset_code, OtpType::PasswordReset)
+        .await?;
 
     // Queue reset email
     match state
@@ -448,6 +506,7 @@ pub async fn forgot_password(
     responses(
         (status = 200, description = "Password reset successfully", body = MessageResponse),
         (status = 400, description = "Invalid or expired token"),
+        (status = 429, description = "Too many attempts"),
     )
 )]
 pub async fn reset_password(
@@ -458,33 +517,28 @@ pub async fn reset_password(
         .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
+    // Find user by email
     let user = Users::find()
-        .filter(users::Column::ResetToken.eq(&payload.token))
+        .filter(users::Column::Email.eq(&payload.email))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::BadRequest("Invalid or expired reset token".to_string()))?;
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
-    // Verify email matches the user
-    if user.email != payload.email {
-        return Err(ApiError::BadRequest(
-            "Invalid email or reset token".to_string(),
-        ));
+    // Verify token from Redis (includes rate limiting and auto-deletion on success)
+    let is_valid = state
+        .otp_service
+        .verify_code(&payload.email, &payload.token, OtpType::PasswordReset)
+        .await?;
+
+    if !is_valid {
+        return Err(ApiError::BadRequest("Invalid or expired reset code".to_string()));
     }
 
-    if let Some(expires_at) = user.reset_token_expires_at {
-        if expires_at < now_utc() {
-            return Err(ApiError::BadRequest("Reset token has expired".to_string()));
-        }
-    } else {
-        return Err(ApiError::BadRequest("Invalid reset token".to_string()));
-    }
-
+    // Update password
     let password_hash = hash_password(&payload.new_password)?;
 
     let mut user: users::ActiveModel = user.into();
     user.password_hash = Set(Some(password_hash));
-    user.reset_token = Set(None);
-    user.reset_token_expires_at = Set(None);
     user.updated_at = Set(now_utc());
 
     user.update(&state.db).await?;
@@ -514,33 +568,28 @@ pub async fn verify_reset_token(
         .validate()
         .map_err(|e| ApiError::ValidationError(e.to_string()))?;
 
-    // Find user by email
-    let user = Users::find()
+    // Check if user exists
+    let _user = Users::find()
         .filter(users::Column::Email.eq(&payload.email))
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
-    // Check if user has a reset token
-    let reset_token = user.reset_token.as_ref()
-        .ok_or_else(|| ApiError::BadRequest("No password reset request found".to_string()))?;
+    // Check if reset code exists in Redis (without consuming it)
+    let has_code = state
+        .otp_service
+        .has_code(&payload.email, OtpType::PasswordReset)
+        .await?;
 
-    // Verify token matches
-    if reset_token != &payload.token {
-        return Err(ApiError::BadRequest("Invalid reset token".to_string()));
+    if !has_code {
+        return Err(ApiError::BadRequest("No password reset request found".to_string()));
     }
 
-    // Check if token is expired
-    if let Some(expires_at) = user.reset_token_expires_at {
-        if expires_at < now_utc() {
-            return Err(ApiError::BadRequest("Reset token has expired".to_string()));
-        }
-    } else {
-        return Err(ApiError::BadRequest("Invalid reset token".to_string()));
-    }
+    // Note: We don't verify the actual code here to avoid consuming verification attempts
+    // The actual verification happens in reset_password endpoint
 
     Ok(Json(VerifyResetTokenResponse {
-        message: "Token verified successfully".to_string(),
+        message: "Reset code exists. Please enter the code to reset your password.".to_string(),
         valid: true,
     }))
 }
@@ -553,9 +602,12 @@ pub async fn verify_reset_token(
 use axum::response::Redirect;
 use rand::Rng;
 
+/// OAuth state TTL (10 minutes)
+const OAUTH_STATE_TTL_SECS: u64 = 10 * 60;
+
 /// Initiate Google OAuth flow
 ///
-/// Generates a secure state token, stores it in the database, and redirects
+/// Generates a secure state token, stores it in Redis, and redirects
 /// the user to Google's OAuth consent page.
 #[utoipa::path(
     get,
@@ -576,19 +628,12 @@ pub async fn oauth_google_init(
         .map(char::from)
         .collect();
 
-    // Store state in database with 10-minute expiry
-    let expires_at = chrono::Utc::now().naive_utc() + chrono::Duration::minutes(10);
-    
-    use crate::models::oauth_states;
-    let oauth_state = oauth_states::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        state: Set(state_value.clone()),
-        provider: Set("google".to_string()),
-        created_at: Set(chrono::Utc::now().naive_utc()),
-        expires_at: Set(expires_at),
-    };
-    
-    oauth_state.insert(&state.db).await?;
+    // Store state in Redis with 10-minute TTL
+    let oauth_state_key = format!("oauth:state:{}", state_value);
+    state
+        .redis
+        .set(&oauth_state_key, "google", Some(OAUTH_STATE_TTL_SECS))
+        .await?;
 
     // Build Google OAuth URL using config
     let auth_url = format!(
@@ -677,27 +722,22 @@ async fn oauth_google_callback_inner(
     code: &str,
     state_value: &str,
 ) -> ApiResult<(String, String, String, String, String, String)> {
-    // Validate state (must exist and not be expired)
-    use crate::models::oauth_states::{self, Entity as OauthStates};
+    // Validate state from Redis (must exist)
+    let oauth_state_key = format!("oauth:state:{}", state_value);
 
-    let oauth_state = OauthStates::find()
-        .filter(oauth_states::Column::State.eq(state_value))
-        .one(&state.db)
+    let provider = state
+        .redis
+        .get(&oauth_state_key)
         .await?
         .ok_or_else(|| ApiError::BadRequest("Invalid or expired state".to_string()))?;
 
-    // Check if state has expired
-    if oauth_state.expires_at < chrono::Utc::now().naive_utc() {
-        OauthStates::delete_by_id(oauth_state.id)
-            .exec(&state.db)
-            .await?;
-        return Err(ApiError::BadRequest("State has expired".to_string()));
+    // Verify it's a Google OAuth state
+    if provider != "google" {
+        return Err(ApiError::BadRequest("Invalid OAuth provider".to_string()));
     }
 
-    // Delete state (single-use)
-    OauthStates::delete_by_id(oauth_state.id)
-        .exec(&state.db)
-        .await?;
+    // Delete state (single-use) - automatically expired by TTL if not deleted
+    state.redis.del(&oauth_state_key).await?;
 
     // Exchange code for tokens
     let token_url = "https://oauth2.googleapis.com/token";
@@ -785,10 +825,6 @@ async fn oauth_google_callback_inner(
             auth_type: Set(users::AuthType::Google),
             role: Set(users::UserRole::User),
             status: Set(users::UserStatus::Active),
-            verification_token: Set(None),
-            token_expires_at: Set(None),
-            reset_token: Set(None),
-            reset_token_expires_at: Set(None),
             created_at: Set(chrono::Utc::now().naive_utc()),
             updated_at: Set(chrono::Utc::now().naive_utc()),
             last_login: Set(Some(chrono::Utc::now().naive_utc())),

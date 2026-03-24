@@ -3,11 +3,12 @@ use axum::http::{header, Method}; // Add this line
 use backend::config::logging;
 use dotenvy::dotenv;
 use sea_orm::{ConnectOptions, Database};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 use backend::{
-    config::{AppConfig, EmailConfig, LiveKitConfig},
+    config::{AppConfig, EmailConfig, LiveKitConfig, RedisConfig},
     routes,
+    services::RedisService,
     state::AppState,
     swagger,
     workers::{spawn_email_worker, spawn_meeting_auto_end_worker, spawn_meeting_auto_start_worker},
@@ -58,13 +59,21 @@ async fn main() -> anyhow::Result<()> {
         .expect("Failed to load LiveKit configuration. Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET.");
     tracing::info!("✅ LiveKit configuration loaded ({})", livekit_config.url);
 
+    // Load Redis configuration and create service
+    let redis_config = RedisConfig::from_env().expect("Failed to load Redis configuration");
+    tracing::info!("Connecting to Redis at {}...", redis_config.url);
+    let redis_service = RedisService::new(&redis_config)
+        .await
+        .expect("Failed to connect to Redis");
+    tracing::info!("✅ Redis connected successfully");
+
     // Create application state
-    let state = AppState::new(db.clone(), &app_config, &email_config, &livekit_config);
+    let state = AppState::new(db.clone(), redis_service, &app_config, &email_config, &livekit_config);
     tracing::info!("✅ Hosted UI URL: {}", app_config.app_url);
 
     // Start email worker (only if SMTP is configured)
     let _email_worker = if !email_config.smtp_host.is_empty() {
-        match spawn_email_worker(db.clone(), &email_config) {
+        match spawn_email_worker(state.email_service.queue().clone(), &email_config) {
             Some(handle) => {
                 tracing::info!("✅ Email worker started");
                 Some(handle)

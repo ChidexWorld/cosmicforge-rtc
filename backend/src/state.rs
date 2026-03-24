@@ -5,6 +5,7 @@ use crate::config::{AppConfig, EmailConfig, LiveKitConfig};
 use crate::services::auth::JwtService;
 use crate::services::email::EmailService;
 use crate::services::livekit::LiveKitService;
+use crate::services::{OtpService, RateLimiterService, RedisService, TokenBlacklistService};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,6 +13,10 @@ pub struct AppState {
     pub jwt_service: Arc<JwtService>,
     pub email_service: Arc<EmailService>,
     pub livekit_service: Arc<LiveKitService>,
+    pub redis: Arc<RedisService>,
+    pub otp_service: Arc<OtpService>,
+    pub token_blacklist: Arc<TokenBlacklistService>,
+    pub rate_limiter: Arc<RateLimiterService>,
     /// Frontend/Hosted UI URL for generating join links
     pub app_url: String,
     /// Google OAuth Client ID
@@ -27,15 +32,25 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         db: DatabaseConnection,
+        redis: RedisService,
         app_config: &AppConfig,
         email_config: &EmailConfig,
         livekit_config: &LiveKitConfig,
     ) -> Self {
+        let redis = Arc::new(redis);
+        let otp_service = Arc::new(OtpService::new(redis.clone()));
+        let token_blacklist = Arc::new(TokenBlacklistService::new(redis.clone()));
+        let rate_limiter = Arc::new(RateLimiterService::new(redis.clone()));
+
         Self {
-            db: db.clone(),
+            db,
             jwt_service: Arc::new(JwtService::new(app_config.jwt_secret.clone())),
-            email_service: Arc::new(EmailService::new(db, email_config)),
+            email_service: Arc::new(EmailService::new(redis.clone(), email_config)),
             livekit_service: Arc::new(LiveKitService::new(livekit_config)),
+            redis,
+            otp_service,
+            token_blacklist,
+            rate_limiter,
             app_url: app_config.app_url.clone(),
             google_client_id: app_config.google_client_id.clone(),
             google_client_secret: app_config.google_client_secret.clone(),

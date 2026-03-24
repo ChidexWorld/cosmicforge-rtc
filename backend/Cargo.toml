@@ -48,6 +48,11 @@ urlencoding = "2.1"
 # LiveKit
 livekit-api = "0.4"
 
+# Redis
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+deadpool-redis = "0.15"
+sha2 = "0.10"
+
 [[bin]]
 name = "test_email"
 path = "src/bin/test_email.rs"

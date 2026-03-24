@@ -31,6 +31,9 @@ pub enum ApiError {
 
     #[error("Bad request: {0}")]
     BadRequest(String),
+
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
 }
 
 impl IntoResponse for ApiError {
@@ -54,6 +57,7 @@ impl IntoResponse for ApiError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg)
             }
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "BAD_REQUEST", msg),
+            ApiError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", msg),
         };
 
         let body = Json(json!({

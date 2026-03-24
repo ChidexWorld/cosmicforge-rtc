@@ -35,6 +35,11 @@ pub async fn auth_middleware(
         .strip_prefix("Bearer ")
         .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
 
+    // Check if token is blacklisted (logout)
+    if state.token_blacklist.is_blacklisted(token).await? {
+        return Err(ApiError::Unauthorized("Token has been revoked".to_string()));
+    }
+
     // Verify token
     let claims = state
         .jwt_service
